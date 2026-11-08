@@ -1,0 +1,30 @@
+# Real secrets, tokens, and cached health data live in ~/.health_tracker
+# (HEALTH_TRACKER_HOME), never in this repo. These rules are a safety net.
+
+# Secrets and tokens
+.env
+.env.*
+!.env.example
+*.enc
+*.key
+*.pem
+client_secret*.json
+credentials*.json
+
+# Cached data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Build / deps
+node_modules/
+dist/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

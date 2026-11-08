@@ -1,0 +1,100 @@
+/*
+ * Chart tokens: dataviz reference palette (validated with validate_palette.js,
+ * slots 1–4, light + dark: ALL CHECKS PASS; light slots 3–4 sit below 3:1, so every
+ * chart ships a table view). Charts reference roles, never raw hex.
+ */
+.viz {
+  --viz-surface: #fcfcfb;
+  --viz-ink: #0b0b0b;
+  --viz-ink-2: #52514e;
+  --viz-muted: #898781;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-ring: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6; /* blue */
+  --series-2: #eb6834; /* orange */
+  --series-3: #1baf7a; /* aqua */
+  --series-4: #eda100; /* yellow */
+  /* ordinal blue ramp (light: no lighter than step 250) */
+  --ord-1: #86b6ef;
+  --ord-2: #2a78d6;
+  --ord-3: #104281;
+}
+@media (prefers-color-scheme: dark) {
+  .viz {
+    --viz-surface: #1a1a19;
+    --viz-ink: #f0efec;
+    --viz-ink-2: #c3c2b7;
+    --viz-muted: #898781;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+    --viz-ring: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    /* ordinal blue ramp (dark: no darker than step 600) */
+    --ord-1: #184f95;
+    --ord-2: #3987e5;
+    --ord-3: #9ec5f4;
+  }
+}
+
+.viz-card {
+  background: var(--viz-surface);
+  border: 1px solid var(--viz-ring);
+  border-radius: 12px;
+  padding: 16px 18px 12px;
+  min-width: 0;
+  color: var(--viz-ink);
+}
+.viz-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.viz-card-title { font-size: 15px; font-weight: 600; margin: 0; }
+.viz-card-sub { font-size: 13px; color: var(--viz-ink-2); margin: 2px 0 0; }
+.viz-toggle {
+  font-size: 12px; padding: 3px 8px; border-radius: 6px; flex: none;
+  border: 1px solid var(--viz-ring); background: none; color: var(--viz-ink-2);
+}
+.viz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 2px; font-size: 12.5px; color: var(--viz-ink-2); }
+.viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.viz-key-rect { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.viz-key-line { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+
+.viz-plot { position: relative; margin-top: 8px; }
+.viz-plot svg { display: block; overflow: visible; }
+.viz-plot text { fill: var(--viz-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.viz-plot .viz-label { fill: var(--viz-ink-2); font-size: 11.5px; font-weight: 600; }
+.viz-grid line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-hit { fill: transparent; cursor: default; outline: none; }
+.viz-col-hover { fill: var(--viz-ink); opacity: 0.05; }
+.viz-cross { stroke: var(--viz-muted); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-empty { color: var(--viz-muted); font-size: 13px; padding: 28px 0; text-align: center; }
+.viz-loading { opacity: 0.5; transition: opacity .15s; }
+
+.viz-tip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--viz-surface); border: 1px solid var(--viz-ring); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 8px 10px; font-size: 12.5px; min-width: 120px; white-space: nowrap;
+}
+.viz-tip-head { color: var(--viz-ink-2); margin-bottom: 4px; }
+.viz-tip-row { display: flex; align-items: center; gap: 8px; }
+.viz-tip-row strong { color: var(--viz-ink); font-weight: 600; }
+.viz-tip-row span { color: var(--viz-ink-2); }
+
+.viz-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+.viz-table th, .viz-table td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--viz-grid); font-variant-numeric: tabular-nums; }
+.viz-table th:first-child, .viz-table td:first-child { text-align: left; }
+.viz-table th { color: var(--viz-ink-2); font-weight: 600; }
+.viz-table-wrap { max-height: 320px; overflow: auto; }
+
+/* Stat tiles */
+.viz-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 12px; }
+.viz-tile { background: var(--viz-surface); border: 1px solid var(--viz-ring); border-radius: 12px; padding: 14px 16px; color: var(--viz-ink); min-width: 0; }
+.viz-tile-label { font-size: 13px; color: var(--viz-ink-2); }
+.viz-tile-value { font-size: 26px; font-weight: 600; margin-top: 2px; line-height: 1.2; }
+.viz-tile-unit { font-size: 14px; font-weight: 500; color: var(--viz-ink-2); margin-left: 4px; }
+.viz-tile-delta { font-size: 12.5px; color: var(--viz-ink-2); margin-top: 2px; }
+.viz-tile-spark { margin-top: 8px; }
+.viz-hero .viz-tile-value { font-size: 48px; }
