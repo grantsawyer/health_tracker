@@ -13,6 +13,7 @@
     "shared",
     "server",
     "core",
+    "platform",
     "vitest.config.ts",
     "playwright.config.ts"
   ]

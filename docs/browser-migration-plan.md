@@ -1,7 +1,8 @@
 # Migration plan: browser-only Health Tracker
 
 **Status:** approved 2026-11-08 with the recommended options (Drive settings sync, GitHub Pages with a public repo,
-keep the local server until phase 6). **Phase 1 done**; phase 2 next.
+keep the local server until phase 6). **Phases 1 and 2 done**; phase 3 next. Scope additions from a review of
+similar apps are in §12.
 **Goal:** run without any server, local or hosted. The app is a static website (e.g. GitHub Pages) that talks
 directly to Google Health from the browser. Each person who opens it signs in with their own Google account and
 sees only their own data. Sharing works with Google's test-user list (up to 100 people), and anyone technical
@@ -48,7 +49,10 @@ browser or their own Drive.
   no ID token).
 - **One consent screen** covers everything: the Google Health scopes, plus `drive.appdata` if settings sync is
   on. Drive is not a separate sign-in.
-- Sign-out revokes the token (`google.accounts.oauth2.revoke`) and clears that browser's cache and queue.
+- Sign-out revokes the token (`google.accounts.oauth2.revoke`) and clears that user's cached health data. Queued food
+  entries and the local settings copy are kept (a removed queue entry is never sent); "Forget this device" removes
+  them too, and the UI warns first when entries are still queued. *(Changed in phase 2; the original text cleared the
+  queue on every sign-out.)*
 - Partial consent stays handled: features whose scope wasn't granted show as unavailable (as today).
 
 ## 4. Client ID as configuration (sharing + run-your-own-copy)
@@ -126,7 +130,7 @@ Each phase keeps the app working and ends with a check you can try.
 | # | Phase | Work | Done when |
 |---|---|---|---|
 | 1 ✅ | **Core extraction** | Move logic from `server/` into `core/` with injected `fetch` and storage interfaces (Google Health client, summary, food rules, OFF, goals/layout/favorites validation, retry queue). The local server calls `core/` so nothing changes for you yet. Unit tests move with it. | All existing unit tests pass against `core/`; app unchanged. |
-| 2 | **Browser platform** | `platform/auth` (GIS), `platform/cache` + `platform/queue` (IndexedDB), `platform/settings` (Drive appData + local fallback). | New unit tests with fake GIS/Drive/IndexedDB pass. |
+| 2 ✅ | **Browser platform** | `platform/auth` (GIS), `platform/cache` + `platform/queue` (IndexedDB), `platform/settings` (Drive appData + local fallback). | New unit tests with fake GIS/Drive/IndexedDB pass. **Done 2026-11-08:** `platform/` (idb, cache, queue, drive, settings, auth, browserPlatform + `startRetryLoop`), 34 tests in `tests/unit/browserPlatform.test.ts`. Not wired into the UI yet (phase 3). |
 | 3 | **Switch the seam** | `src/api.ts` calls `core/` + `platform/` directly instead of `/api/*`. Setup screen becomes client-ID + JavaScript-origin flow; sign-in button uses GIS. Settings export/import. | `npm run dev` works with **no Node server**; browser tests rewritten to mock Google/Drive/OFF endpoints pass. |
 | 4 | **Multi-user readiness** | Generic defaults + first-run goals card; runtime client-ID override; per-user cache isolation and clear-on-sign-out; docs for adding test users and running your own copy. | A second test account sees only its own data and its own settings. |
 | 5 | **Hosting** | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. |
@@ -151,7 +155,47 @@ Each phase keeps the app working and ends with a check you can try.
 - **No storing tokens in localStorage:** it's readable by any script on the page and persists indefinitely.
 - **No Google verification:** separate effort, only if you decide to open the app to the public.
 
-## 12. Decisions needed
+## 12. Scope additions (review of similar open-source apps, 2026-11-08)
+
+Added after reviewing seven comparable projects (Pulseboard, Fitbit Health Explorer, DocStream Vitals,
+Vitals Command Center, fettle, HealthLog, HealthQuery). Each item lands where it's cheapest; feature items (S1–S4)
+come after phase 3 so they're built once, on the browser seam, rather than twice.
+
+| # | Item | Why | Lands in | Status |
+|---|---|---|---|---|
+| S1 | **Recovery vitals:** `daily-heart-rate-variability`, `daily-oxygen-saturation`, `daily-respiratory-rate`, `daily-sleep-temperature-derivations` (nightly skin temperature), `daily-vo2-max`. Read with list + `.date` filter; show on Sleep/Body with the existing "typical range" (`baseline.ts`) and as Today cards. | Every comparable Google Health app shows them; our `health_metrics_and_measurements.readonly` scope already covers them, so no new consent. | After phase 3 | planned |
+| S2 | **Trim BMR-only energy days:** keep `total-calories` only on days with device evidence (any steps, active minutes, heart rate or sleep). | Google fills total calories from basal metabolic rate on days without a device, so the history runs back before the tracker existed and inflates energy-balance views. | After phase 3 (core/summary) | planned |
+| S3 | **Daily `.date` filter fallback:** if a daily-summary list returns zero rows while the same range has rollup data, retry once with the camelCase union name (`dailyRestingHeartRate.date`) and remember which style the account accepts. | We verified snake_case live, but HealthLog saw snake_case return 200 with zero rows on some accounts. Cheap insurance; stays in `core/healthClient.ts`. | With S1 | planned |
+| S4 | **Connections:** predefined, interpretable pairs including food → next-day sleep / resting heart rate (our unique data). Pearson on ≥5 matched days, "tentative" under 8, lagged pairs labelled "next day", always described as association, never cause. | Others show lagged correlations; none can use nutrition. | After S1 | planned |
+| S5 | **Incremental sync:** store per-day records in IndexedDB, refetch only the last 3 days (overlap catches late sleep/workouts) plus any gap; paint cached data first, then revalidate. | Cuts cold-load requests (rollup caps make long ranges expensive) and makes the app instant on reopen. Replaces range-keyed TTL entries for daily data. | After phase 3 (core/dataService + platform/cache) | planned |
+| S6 | **Demo mode:** reuse `tests/e2e/mockApi.ts`'s synthetic data as a "Try the demo" mode with no sign-in. | A public demo for the Pages site, and screenshots that can never contain personal data. | Phase 5 | planned |
+| S7 | **History-wide hygiene check in CI:** a GitHub Actions job that scans every commit for forbidden paths (`.env`, `*.db`, `samples/`, tokens) and credential signatures (`GOCSPX-`, `ya29.`, `1//`, private keys). | The repo becomes public in phase 5. `check:privacy` stays the local gate (its patterns live outside the repo); CI catches generic leaks. | Phase 5 (before the repo goes public) | planned |
+| S8 | **Client ID in the bundle:** the browser build ships `VITE_GOOGLE_CLIENT_ID` in its JavaScript by design (it isn't secret). It comes from a GitHub Actions variable, never a committed file, so `check:privacy` keeps treating it as private in the repo. | Avoids a false "leak" alarm and documents the decision. | Phase 3/5 | decided |
+| S9 | **Keep the raw `exerciseType`** when it doesn't map to a known activity, and show it instead of "Other". | Lossless; small. | After phase 3 | planned |
+
+Considered and **not** added: device battery / last-sync status (needs a new `settings.readonly` scope); population
+benchmarks and composite scores like "physio age" (conflict with the own-baseline design); a public owner dashboard;
+an AI coach (possible later; if added, follow the safe pattern: the model only narrates numbers the app computed,
+metric names are fixed lists, numbers in its text are checked against the data, and nothing the model can call
+reaches tokens or settings).
+
+## 13. Phase 2 notes (for phase 3)
+
+- **Wiring:** `openDb()` → `createGisAuth({ clientId, scopes: browserScopes(driveSync), gis: loadGisScript })` →
+  `createBrowserPlatform(...)` → `configurePlatform(bp.platform)`. Call `auth.load()` at startup so the Sign-in button
+  can call `auth.signIn()` synchronously inside the click (GIS needs the click's pop-up permission). After sign-in, call
+  `bp.afterSignIn()` (prunes the cache, pulls settings from Drive) and `startRetryLoop(processPendingWrites)`.
+- **Retry queue scope:** in the browser `due()` returns only the signed-in user's rows, since that user's token is the
+  only one available. The server version returns every user's due rows.
+- **Settings merge:** goes key by key, and the newest `updatedAt` wins. `settings.status()` reports
+  local / unavailable / error / synced for the Account page. `exportAll()` / `importAll()` back the settings export
+  and import.
+- **Open Food Facts:** `offUserAgent` is `HealthTracker/<version>`. Phase 3 must send it as `X-User-Agent`, because
+  browsers drop `User-Agent` and core still sets it.
+- **Silent renewal:** may be blocked outside a click. It gives up after 8 s and raises `ReauthRequiredError`, which the
+  UI turns into a "Sign in" prompt. The email hint survives reloads, so the next sign-in targets the same account.
+
+## 14. Decisions needed
 
 1. **Settings sync:** Google Drive app data, synced across devices (recommended), or local-only per browser?
 2. **Hosting:** GitHub Pages with the repo made public (recommended), or Netlify/Cloudflare Pages to keep it

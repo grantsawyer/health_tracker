@@ -12,14 +12,18 @@ food logging written back to Google Health. Single user (the owner). See README.
   Google Drive app-data settings sync, GitHub Pages with a public repo, keep the local server until phase 6.
   **Phase 1 (core extraction) is done:** all logic is in `core/`, and the server is a thin host via
   `server/platform.ts`.
-- **Next: phase 2**, the browser platform: GIS sign-in, IndexedDB cache and queue, Drive app-data settings with
-  a local fallback. Not started (the owner asked to stop after phase 1).
-- **Tests:** `npm test` (170 unit) and `npm run test:e2e` (15 browser). The owner prefers that tests aren't run
+- **Phase 2 (browser platform) is done:** `platform/` holds GIS sign-in, the IndexedDB cache and retry queue, and
+  settings in IndexedDB synced to Drive appData. It is tested but **not wired into the UI yet**.
+- **Next: phase 3**, switching the seam: `src/api.ts` calls `core/` + `platform/` directly, GIS sign-in button,
+  client-ID setup flow, settings export/import, OFF search via `cgi/search.pl` + `X-User-Agent`. Wiring notes are in
+  the plan's §13.
+- **Scope additions** S1–S9 (from a review of seven similar apps, 2026-11-08) are in the plan's §12: recovery vitals,
+  BMR-only energy trimming, `.date` filter fallback, food→sleep connections, incremental sync, demo mode, a CI
+  history scan before the repo goes public, client ID in the bundle, raw exercise type. Most land after phase 3.
+- **Tests:** `npm test` (204 unit) and `npm run test:e2e` (15 browser). The owner prefers that tests aren't run
   unless asked; running them when adding or changing tests is expected.
 - **Before committing:** run `npm run check:privacy`, `npm run typecheck`, and `npm run build`.
-- **Possibly pending:** the history rewrite was committed locally, but the force-push needs the owner to run
-  `git push --force-with-lease=main:28d4e58 origin main` (auto mode blocks it). If `git log origin/main` still
-  shows `28d4e58`, it hasn't been pushed yet.
+- **History rewrite pushed** 2026-11-08: `origin/main` no longer contains `28d4e58` (force-pushed with lease).
 
 **Owner's local state (not in the repo):** `~/.health_tracker/` holds `.env` (client id and secret),
 `token.enc`/`token.key`, `cache.db`, `app.db` (their goals, layout, favorites, retry queue) and
@@ -55,6 +59,13 @@ food logging written back to Google Health. Single user (the owner). See README.
   - `healthClient.ts` (Google Health API), `dataService.ts` (cached reads + TTL), `summary.ts`, `food.ts`
     (library, day log, recents, create/update/delete, retry queue), `openFoodFacts.ts`, `goals.ts`, `layout.ts`,
     `favorites.ts` (stored as one settings entry), `errors.ts`.
+- `platform/` (phase 2, browser only; never imports `server/` or `node:*`, enforced by
+  `tests/unit/browserPlatform.test.ts`): `idb.ts` (one DB `health-tracker`, stores cache / pending / settings, every
+  record keyed by the signed-in email), `cache.ts`, `queue.ts` (same backoff as the server; `due()` is scoped to the
+  signed-in user), `drive.ts` (one `settings.json` in appDataFolder), `settings.ts` (local copy plus per-key
+  last-write-wins sync; never throws, reports status), `auth.ts` (GIS token model; `signIn()` must run inside a click;
+  token in memory + sessionStorage), `browserPlatform.ts` (`createBrowserPlatform`, `browserScopes`, `startRetryLoop`).
+  Tests use `fake-indexeddb` (pinned) and `tests/helpers/fakeBrowser.ts` (fake GIS, Drive, sessionStorage).
 - `server/platform.ts`: the server's `Platform` (SQLite cache, app.db settings + pending queue per signed-in
   user, token file, client id). Imported by `server/app.ts`; also migrates the old favorites table once.
 
