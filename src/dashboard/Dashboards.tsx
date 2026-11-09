@@ -1,153 +1,198 @@
-import type { DailySummary, ExerciseSession, SleepSession, SummaryResponse } from "../../shared/summary";
+import type { DailySummary, ExerciseSession, SummaryResponse } from "../../shared/summary";
+import type { Goals } from "../../shared/goals";
 import { ChartCard } from "../viz/ChartCard";
 import { ColumnChart } from "../viz/ColumnChart";
 import { LineChart } from "../viz/LineChart";
+import { MiniTrend } from "../viz/MiniTrend";
+import { RangeBar } from "../viz/RangeBar";
+import { Ring } from "../viz/Ring";
 import { ScheduleChart, fmtClock } from "../viz/ScheduleChart";
-import { StatTile } from "../viz/StatTile";
-import { fmtLongDate, fmtShortDate, parseDate } from "../viz/scale";
-import {
-  distance, fmtBpm, fmtDuration, fmtInt, fmtKcal, fmtMin, fmtPct, weight, type UnitSystem,
-} from "../units";
+import { SleepTimeline } from "../viz/SleepTimeline";
+import { fmtLongDate, fmtShortDate } from "../viz/scale";
+import { Icon } from "../ui/icons";
+import { Pill, type Status } from "../ui/Pill";
+import { distance, fmtBpm, fmtDuration, fmtInt, fmtKcal, fmtMin, fmtPct, weight, type UnitSystem } from "../units";
+import { budgetStatus, goalStatus, rangeStatus, rollingAverage, typicalRange } from "./baseline";
+import type { Period } from "./period";
+import { minutesFrom, nightsByDate, type Night } from "./sleep";
+import { compareStages, efficiencyPct, efficiencySentence } from "./sleepStages";
+import { useState } from "react";
+import { CardBoard } from "./CardBoard";
+import { metricById, type MetricDef } from "./cards";
+import { useLayout } from "./useLayout";
+import { GoalEditor } from "../ui/GoalEditor";
+import { LAYOUT_LIMITS, type TodayLayout } from "../../shared/layout";
 
-export interface ViewProps {
-  data: SummaryResponse;
-  loading: boolean;
-  units: UnitSystem;
-}
-
-const S1 = "var(--series-1)", S2 = "var(--series-2)", S3 = "var(--series-3)", S4 = "var(--series-4)";
-const ORD = ["var(--ord-1)", "var(--ord-2)", "var(--ord-3)"];
-
-const avg = (xs: (number | undefined)[]) => {
-  const v = xs.filter((x): x is number => x !== undefined);
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
-};
-const azmTotal = (d: DailySummary) => (d.azm ? d.azm.fatBurn + d.azm.cardio + d.azm.peak : undefined);
-const lastWith = <T,>(days: DailySummary[], pick: (d: DailySummary) => T | undefined) => {
-  for (let i = days.length - 1; i >= 0; i--) {
-    const v = pick(days[i]!);
-    if (v !== undefined) return { value: v, date: days[i]!.date };
-  }
-  return undefined;
-};
-const dash = "—";
-
-// ── Sleep helpers ────────────────────────────────────────────────────────────
-
-export interface Night {
-  date: string;
-  main?: SleepSession;
-  asleep: number;
-  stages: SleepSession["stages"];
-}
-
-/** Group non-nap sessions by wake-up date; the longest is the night's main sleep. */
-export function nightsByDate(sessions: SleepSession[], days: DailySummary[]): Night[] {
-  return days.map((d) => {
-    const s = sessions.filter((x) => x.date === d.date && !x.isNap);
-    const stages = { deep: 0, light: 0, rem: 0, awake: 0, asleep: 0, restless: 0 };
-    for (const x of s) for (const k of Object.keys(stages) as (keyof typeof stages)[]) stages[k] += x.stages[k];
-    const main = [...s].sort((a, b) => b.minutesInBed - a.minutesInBed)[0];
-    return { date: d.date, main, asleep: s.reduce((t, x) => t + x.minutesAsleep, 0), stages };
-  });
-}
-
-/** Wall-clock "YYYY-MM-DDTHH:mm" → minutes relative to midnight starting `date`. */
-function minutesFrom(date: string, local: string): number {
-  const base = parseDate(date).getTime();
-  const [d, t] = local.split("T") as [string, string];
-  const [h, m] = t.split(":").map(Number) as [number, number];
-  return Math.round((parseDate(d).getTime() - base) / 60000) + h * 60 + m;
-}
+export type { Tab, ViewCtx } from "./ctx";
+import type { ViewCtx } from "./ctx";
+import { ORD, S, avg, azmTotal, byDate, dash, elapsedDays, focusDay, lastWith, pctFill, periodWord, series, sum, table, typical, upToAnchor } from "./ctx";
 
 // ── Today ────────────────────────────────────────────────────────────────────
 
-export function TodayView({ data, units }: ViewProps) {
-  const days = data.days;
-  const today = days[days.length - 1]!;
-  const prior = days.slice(0, -1);
-  const nights = nightsByDate(data.sleep, days);
-  const lastNight = nights[nights.length - 1];
-  const W = weight(units);
-  const latestWeight = lastWith(days, (d) => d.weightKg);
-  const latestRhr = lastWith(days, (d) => d.restingHr);
-  const n = days.length;
+function Tile(p: { tone: string; icon: () => React.JSX.Element; label: string; value: string; sub?: string; fill?: string; onOpen: () => void }) {
+  return (
+    <button className={`tile tone-${p.tone}`} style={{ ["--fill" as string]: p.fill ?? "0%" }} onClick={p.onOpen}
+      aria-label={`${p.label}: ${p.value}${p.sub ? `, ${p.sub}` : ""}`}>
+      <span className="tile-icon"><p.icon /></span>
+      <span className="tile-text">
+        <span className="tile-label">{p.label}</span>
+        <span className="tile-value">{p.value}</span>
+        {p.sub && <span className="tile-sub">{p.sub}</span>}
+      </span>
+    </button>
+  );
+}
 
-  const vsAvg = (todayV: number | undefined, priorVs: (number | undefined)[], fmt: (v: number) => string) => {
-    const a = avg(priorVs);
-    return a === undefined || todayV === undefined ? undefined : `${n - 1}-day average ${fmt(a)}`;
+/**
+ * Today: a fixed steps square beside a customizable block of "today" tiles,
+ * then a customizable "This week" grid. Customize mode lets the owner add,
+ * remove and reorder cards from the registry in cards.tsx; the layout is
+ * saved per user (app.db).
+ */
+export function TodayView(ctx: ViewCtx) {
+  const { goals } = ctx;
+  const day = focusDay(ctx);
+  const { layout, save, reset } = useLayout();
+  const [draft, setDraft] = useState<TodayLayout | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const editing = draft !== null;
+  const shown = draft ?? layout;
+
+  const done = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await save(draft);
+      setDraft(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
-  const todaysWorkouts = data.exercise.filter((e) => e.date === today.date);
+
+  const tile = (def: MetricDef) => {
+    const c = def.tile!(ctx);
+    return <Tile tone={def.tone} icon={def.icon} label={def.label} value={c.value} sub={c.sub} fill={c.fill} onOpen={() => ctx.open(def.tab)} />;
+  };
+  const ring = (
+    <div className="ring-card">
+      <Ring label="Steps" value={day?.steps ?? 0} goal={goals.steps} valueText={fmtInt(day?.steps ?? 0)} goalText={`of ${fmtInt(goals.steps)}`} />
+      <span className="ring-goal-edit"><GoalEditor goalKey="steps" label="Steps" /></span>
+    </div>
+  );
+  const week = (def: MetricDef) => (
+    <MiniTrend {...def.week!(ctx)} title={def.week!(ctx).label === def.label ? def.label : def.week!(ctx).label} label={`${def.label} this week`}
+      dates={ctx.dates} today={ctx.today} onOpen={() => ctx.open(def.tab)} />
+  );
 
   return (
     <div className="dash">
-      <div className="viz-tiles">
-        <StatTile hero label="Steps today" value={today.steps !== undefined ? fmtInt(today.steps) : dash}
-          delta={vsAvg(today.steps, prior.map((d) => d.steps), fmtInt)} trend={days.map((d) => d.steps)} />
-        <StatTile label="Active zone minutes" value={azmTotal(today) !== undefined ? fmtInt(azmTotal(today)!) : dash}
-          delta={vsAvg(azmTotal(today), prior.map(azmTotal), fmtInt)} trend={days.map(azmTotal)} />
-        <StatTile label="Calories burned" value={today.caloriesOut !== undefined ? fmtInt(today.caloriesOut) : dash} unit="kcal"
-          delta={vsAvg(today.caloriesOut, prior.map((d) => d.caloriesOut), fmtInt)} trend={days.map((d) => d.caloriesOut)} />
-        <StatTile label="Calories eaten" value={today.nutrition ? fmtInt(today.nutrition.kcal) : dash} unit="kcal"
-          delta={vsAvg(today.nutrition?.kcal, prior.map((d) => d.nutrition?.kcal), fmtInt)} trend={days.map((d) => d.nutrition?.kcal)} />
-        <StatTile label="Last night's sleep" value={lastNight?.asleep ? fmtDuration(lastNight.asleep) : dash}
-          delta={lastNight?.main ? `${fmtClock(minutesFrom(lastNight.date, lastNight.main.startLocal))} – ${fmtClock(minutesFrom(lastNight.date, lastNight.main.endLocal))}` : undefined}
-          trend={nights.map((x) => x.asleep || undefined)} />
-        <StatTile label="Resting heart rate" value={latestRhr ? fmtInt(latestRhr.value) : dash} unit="bpm"
-          delta={latestRhr && latestRhr.date !== today.date ? `as of ${fmtShortDate(latestRhr.date)}` : undefined}
-          trend={days.map((d) => d.restingHr)} />
-        <StatTile label="Weight" value={latestWeight ? W.convert(latestWeight.value).toFixed(1) : dash} unit={W.unit}
-          delta={latestWeight && latestWeight.date !== today.date ? `as of ${fmtShortDate(latestWeight.date)}` : undefined}
-          trend={days.map((d) => (d.weightKg !== undefined ? W.convert(d.weightKg) : undefined))} />
-      </div>
-
-      <section className="viz-card">
-        <h3 className="viz-card-title">Today's workouts</h3>
-        {todaysWorkouts.length ? <WorkoutTable sessions={todaysWorkouts} units={units} showDate={false} /> : <p className="viz-card-sub">None recorded yet today.</p>}
+      <section className="today-wrap" aria-label="The day at a glance">
+        <CardBoard section="today" className="today-grid" ids={shown.today} limit={LAYOUT_LIMITS.today} editing={editing} ctx={ctx}
+          defs={metricById} render={(def) => (def.id === "stepsRing" ? ring : tile(def))} onChange={(today) => setDraft({ ...shown, today })} />
       </section>
+
+      <div className="quick-actions">
+        {editing ? (
+          <>
+            <button className="primary" onClick={done} disabled={saving}><Icon.check /> {saving ? "Saving…" : "Done"}</button>
+            <button onClick={() => { setDraft(null); setError(null); }}>Cancel</button>
+            <button onClick={async () => { await reset(); setDraft(null); }}>Reset to default</button>
+            <span className="muted small">Drag cards to rearrange, or use the arrows.</span>
+          </>
+        ) : (
+          <>
+            <button className="primary" onClick={ctx.logFood}><Icon.plus /> Log food</button>
+            <button onClick={() => setDraft(layout)}><Icon.edit /> Customize</button>
+          </>
+        )}
+      </div>
+      {error && <p className="error-text" role="alert">{error}</p>}
+
+      <h2 className="section-title">{ctx.dates.includes(ctx.today) ? "This week" : `Week of ${fmtShortDate(ctx.dates[0]!)}`}</h2>
+      <CardBoard section="week" className="mini-grid" ids={shown.week} limit={LAYOUT_LIMITS.week} editing={editing} ctx={ctx}
+        defs={metricById} render={week} onChange={(w) => setDraft({ ...shown, week: w })} />
     </div>
   );
 }
 
 // ── Fitness ──────────────────────────────────────────────────────────────────
 
-export function FitnessView({ data, loading, units }: ViewProps) {
-  const days = data.days;
+export function FitnessView(ctx: ViewCtx) {
+  const { goals, units } = ctx;
   const D = distance(units);
-  const stepsAvg = avg(days.map((d) => d.steps));
+  const day = focusDay(ctx);
+  const isDay = ctx.period.kind === "D";
+  const m = byDate(ctx.data);
+  const steps = series(ctx, (d) => d.steps);
+  const burned = series(ctx, (d) => d.caloriesOut);
+  const azm = (day && azmTotal(day)) ?? 0;
+  const workouts = ctx.data.exercise.filter((e) => (isDay ? e.date === ctx.period.anchor : ctx.dates.includes(e.date)));
+  const exerciseDays = new Set(ctx.data.exercise.filter((e) => ctx.dates.includes(e.date)).map((e) => e.date)).size;
+  const exerciseGoal = goals.exerciseDaysPerWeek * Math.max(1, Math.round(ctx.dates.length / 7));
+  const stepsAvg = avg(steps);
 
   return (
     <div className="dash">
+      {isDay && (
+        <section className="day-hero" aria-label="Activity for the day">
+          <div className="ring-card">
+            <Ring label="Steps" value={day?.steps ?? 0} goal={goals.steps} valueText={fmtInt(day?.steps ?? 0)} goalText={`of ${fmtInt(goals.steps)}`} />
+          </div>
+          <div className="ranges">
+            <RangeBar label="Active zone minutes" detail={`${fmtInt(azm)} of ${fmtInt(goals.activeZoneMinutes)}`} value={azm} max={Math.max(goals.activeZoneMinutes * 1.5, azm)} color={S.activity} target={goals.activeZoneMinutes} status={goalStatus(azm, goals.activeZoneMinutes)} action={<GoalEditor goalKey="activeZoneMinutes" label="Active zone minutes" />} />
+            <RangeBar label="Calories burned" detail={`${fmtInt(day?.caloriesOut ?? 0)} of ${fmtInt(goals.caloriesBurned)} kcal`} value={day?.caloriesOut} max={Math.max(goals.caloriesBurned * 1.5, day?.caloriesOut ?? 0)} color={S.activity} target={goals.caloriesBurned} status={goalStatus(day?.caloriesOut, goals.caloriesBurned, " kcal")} action={<GoalEditor goalKey="caloriesBurned" label="Calories burned" unit=" kcal" />} />
+            <RangeBar label="Floors" detail={`${fmtInt(day?.floors ?? 0)} of ${fmtInt(goals.floors)}`} value={day?.floors ?? 0} max={Math.max(goals.floors * 1.5, day?.floors ?? 0)} color={S.activity} target={goals.floors} status={goalStatus(day?.floors ?? 0, goals.floors)} action={<GoalEditor goalKey="floors" label="Floors" />} />
+            <div className="range-row"><div className="range-head" style={{ marginBottom: 0 }}><span><b>Distance</b> · {day?.distanceKm !== undefined ? D.format(day.distanceKm) : dash}</span></div></div>
+          </div>
+        </section>
+      )}
+
       <div className="dash-grid">
-        <ChartCard title="Steps" subtitle={stepsAvg !== undefined ? `Average ${fmtInt(stepsAvg)} a day` : undefined} loading={loading}
-          table={{ columns: ["Date", "Steps", `Distance (${D.unit})`, "Floors"], rows: days.map((d) => [fmtShortDate(d.date), d.steps !== undefined ? fmtInt(d.steps) : dash, d.distanceKm !== undefined ? D.convert(d.distanceKm).toFixed(2) : dash, d.floors ?? dash]) }}>
-          <ColumnChart rows={days.map((d) => ({ date: d.date, values: [d.steps] }))} series={[{ label: "Steps", color: S1 }]} format={fmtInt} />
+        <ChartCard title="Steps" goal={<GoalEditor goalKey="steps" label="Steps" />} value={isDay ? fmtInt(day?.steps ?? 0) : stepsAvg !== undefined ? fmtInt(stepsAvg) : dash} unit={isDay ? undefined : " a day on average"}
+          subtitle={`Goal met on ${steps.filter((v) => v !== undefined && v >= goals.steps).length} of ${elapsedDays(ctx)} days ${periodWord(ctx)}`} loading={ctx.loading}
+          table={table(ctx, ["Steps", `Distance (${D.unit})`, "Floors"], (_, d) => [d?.steps !== undefined ? fmtInt(d.steps) : dash, d?.distanceKm !== undefined ? D.convert(d.distanceKm).toFixed(2) : dash, d?.floors ?? dash])}>
+          <ColumnChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, values: [steps[i]] }))} series={[{ label: "Steps", color: S.activity }]} format={fmtInt}
+            reference={{ value: goals.steps, label: `Goal ${fmtInt(goals.steps)}`, badges: true }} />
         </ChartCard>
 
-        <ChartCard title="Active zone minutes" subtitle="Minutes in heart-rate zones; cardio and peak count double" loading={loading}
-          legend={[{ label: "Fat burn", color: S1, shape: "rect" }, { label: "Cardio", color: S2, shape: "rect" }, { label: "Peak", color: S3, shape: "rect" }]}
-          table={{ columns: ["Date", "Fat burn", "Cardio", "Peak", "Total"], rows: days.map((d) => [fmtShortDate(d.date), d.azm?.fatBurn ?? dash, d.azm?.cardio ?? dash, d.azm?.peak ?? dash, azmTotal(d) ?? dash]) }}>
-          <ColumnChart rows={days.map((d) => ({ date: d.date, values: [d.azm?.fatBurn, d.azm?.cardio, d.azm?.peak] }))}
-            series={[{ label: "Fat burn", color: S1 }, { label: "Cardio", color: S2 }, { label: "Peak", color: S3 }]} format={fmtInt} />
+        <ChartCard title="Active zone minutes" goal={<GoalEditor goalKey="activeZoneMinutes" label="Active zone minutes" />} value={fmtInt(sum(series(ctx, azmTotal)))} unit={` ${periodWord(ctx)}`} subtitle="Cardio and peak minutes count double" loading={ctx.loading}
+          legend={[{ label: "Fat burn", color: ORD[0]!, shape: "rect" }, { label: "Cardio", color: ORD[1]!, shape: "rect" }, { label: "Peak", color: ORD[2]!, shape: "rect" }]}
+          table={table(ctx, ["Fat burn", "Cardio", "Peak", "Total"], (_, d) => [d?.azm?.fatBurn ?? dash, d?.azm?.cardio ?? dash, d?.azm?.peak ?? dash, d && azmTotal(d) !== undefined ? azmTotal(d)! : dash])}>
+          <ColumnChart today={ctx.today} rows={ctx.dates.map((date) => ({ date, values: [m.get(date)?.azm?.fatBurn, m.get(date)?.azm?.cardio, m.get(date)?.azm?.peak] }))}
+            series={[{ label: "Fat burn", color: ORD[0]! }, { label: "Cardio", color: ORD[1]! }, { label: "Peak", color: ORD[2]! }]} format={fmtInt}
+            reference={{ value: goals.activeZoneMinutes, label: `Goal ${goals.activeZoneMinutes}`, badges: true }} />
         </ChartCard>
 
-        <ChartCard title="Active minutes" subtitle="By intensity" loading={loading}
+        <ChartCard title="Calories burned" goal={<GoalEditor goalKey="caloriesBurned" label="Calories burned" unit=" kcal" />} value={isDay ? fmtInt(day?.caloriesOut ?? 0) : fmtInt(avg(burned) ?? 0)} unit={isDay ? " kcal" : " kcal a day on average"} loading={ctx.loading}
+          table={table(ctx, ["kcal"], (_, d) => [d?.caloriesOut !== undefined ? fmtInt(d.caloriesOut) : dash])}>
+          <ColumnChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, values: [burned[i]] }))} series={[{ label: "Calories burned", color: S.activity }]} format={fmtKcal}
+            reference={{ value: goals.caloriesBurned, label: `Goal ${fmtInt(goals.caloriesBurned)}`, badges: true }} />
+        </ChartCard>
+
+        <ChartCard title="Active minutes" subtitle="By intensity" loading={ctx.loading}
           legend={[{ label: "Light", color: ORD[0]!, shape: "rect" }, { label: "Moderate", color: ORD[1]!, shape: "rect" }, { label: "Vigorous", color: ORD[2]!, shape: "rect" }]}
-          table={{ columns: ["Date", "Light", "Moderate", "Vigorous"], rows: days.map((d) => [fmtShortDate(d.date), d.activeMinutes?.light ?? dash, d.activeMinutes?.moderate ?? dash, d.activeMinutes?.vigorous ?? dash]) }}>
-          <ColumnChart rows={days.map((d) => ({ date: d.date, values: [d.activeMinutes?.light, d.activeMinutes?.moderate, d.activeMinutes?.vigorous] }))}
+          table={table(ctx, ["Light", "Moderate", "Vigorous"], (_, d) => [d?.activeMinutes?.light ?? dash, d?.activeMinutes?.moderate ?? dash, d?.activeMinutes?.vigorous ?? dash])}>
+          <ColumnChart today={ctx.today} rows={ctx.dates.map((date) => ({ date, values: [m.get(date)?.activeMinutes?.light, m.get(date)?.activeMinutes?.moderate, m.get(date)?.activeMinutes?.vigorous] }))}
             series={[{ label: "Light", color: ORD[0]! }, { label: "Moderate", color: ORD[1]! }, { label: "Vigorous", color: ORD[2]! }]} format={fmtMin} />
-        </ChartCard>
-
-        <ChartCard title="Calories burned" subtitle="Total daily energy expenditure" loading={loading}
-          table={{ columns: ["Date", "kcal"], rows: days.map((d) => [fmtShortDate(d.date), d.caloriesOut !== undefined ? fmtInt(d.caloriesOut) : dash]) }}>
-          <ColumnChart rows={days.map((d) => ({ date: d.date, values: [d.caloriesOut] }))} series={[{ label: "Calories burned", color: S1 }]} format={fmtKcal} />
         </ChartCard>
       </div>
 
-      <section className={`viz-card ${loading ? "viz-loading" : ""}`}>
-        <h3 className="viz-card-title">Workouts</h3>
-        <p className="viz-card-sub">{data.exercise.length} in this range</p>
-        {data.exercise.length ? <WorkoutTable sessions={[...data.exercise].reverse()} units={units} showDate /> : null}
+      <section className={`viz-card ${ctx.loading ? "viz-loading" : ""}`}>
+        <div className="viz-card-head">
+          <div>
+            <h3 className="viz-card-title">Workouts</h3>
+            {!isDay && <p className="viz-card-value">{exerciseDays}<small> of {exerciseGoal} exercise days</small></p>}
+          </div>
+          <div className="viz-card-actions">
+            {!isDay && <Pill tone={exerciseDays >= exerciseGoal ? "good" : "info"}>{exerciseDays >= exerciseGoal ? "Goal met" : `${exerciseGoal - exerciseDays} left`}</Pill>}
+            <GoalEditor goalKey="exerciseDaysPerWeek" label="Exercise days per week" unit=" a week" />
+          </div>
+        </div>
+        {workouts.length ? <WorkoutTable sessions={[...workouts].reverse()} units={units} showDate={!isDay} /> : <p className="viz-card-sub">No workouts recorded {isDay ? "this day" : "in this period"}.</p>}
       </section>
     </div>
   );
@@ -162,10 +207,7 @@ function WorkoutTable({ sessions, units, showDate }: { sessions: ExerciseSession
     <div className="viz-table-wrap">
       <table className="viz-table">
         <thead>
-          <tr>
-            {showDate && <th>Date</th>}
-            <th>Workout</th><th>Start</th><th>Duration</th><th>Distance</th><th>Avg HR</th><th>Calories</th>
-          </tr>
+          <tr>{showDate && <th>Date</th>}<th>Workout</th><th>Start</th><th>Duration</th><th>Distance</th><th>Avg HR</th><th>Calories</th></tr>
         </thead>
         <tbody>
           {sessions.map((s) => (
@@ -187,54 +229,51 @@ function WorkoutTable({ sessions, units, showDate }: { sessions: ExerciseSession
 
 // ── Sleep ────────────────────────────────────────────────────────────────────
 
-export function SleepView({ data, loading }: ViewProps) {
-  const nights = nightsByDate(data.sleep, data.days);
-  const tracked = nights.filter((x) => x.main);
-  const sched = nights.map((x) => ({
-    date: x.date,
-    start: x.main ? minutesFrom(x.date, x.main.startLocal) : undefined,
-    end: x.main ? minutesFrom(x.date, x.main.endLocal) : undefined,
-  }));
-  const avgAsleep = avg(tracked.map((x) => x.asleep));
-  const avgBed = avg(sched.map((s) => s.start));
-  const avgWake = avg(sched.map((s) => s.end));
-  const naps = data.sleep.filter((s) => s.isNap);
-  const h = (m: number) => m / 60;
-  const fmtHours = (v: number) => fmtDuration(v * 60);
+export function SleepView(ctx: ViewCtx) {
+  const { goals } = ctx;
+  const nights = nightsByDate(ctx.data.sleep, ctx.dates.map((date) => ({ date })));
+  const isDay = ctx.period.kind === "D";
+  const night = nights.find((n) => n.date === ctx.period.anchor);
+  const baseNights = ctx.baseline ? nightsByDate(ctx.baseline.sleep, ctx.baseline.days).filter((n) => n.main) : [];
+  const shown = nights.filter((n) => n.date <= ctx.today);
+  const tracked = shown.filter((n) => n.main);
+  const sched = nights.map((n) => ({ date: n.date, start: n.main ? minutesFrom(n.date, n.main.startLocal) : undefined, end: n.main ? minutesFrom(n.date, n.main.endLocal) : undefined }));
+  const h = (min: number) => min / 60;
+  const naps = ctx.data.sleep.filter((s) => s.isNap && (isDay ? s.date === ctx.period.anchor : ctx.dates.includes(s.date)));
+  const avgAsleep = avg(tracked.map((n) => n.asleep));
+  const avgStart = avg(sched.map((s) => s.start)), avgEnd = avg(sched.map((s) => s.end));
+  const vsGoal = (min: number | undefined): Status | undefined =>
+    goals.sleepMinutes && min !== undefined ? (min >= goals.sleepMinutes ? { tone: "good", text: "Goal met" } : { tone: "warn", text: "Goal not met" }) : undefined;
 
   return (
     <div className="dash">
-      <div className="viz-tiles">
-        <StatTile label="Average time asleep" value={avgAsleep !== undefined ? fmtDuration(avgAsleep) : dash} />
-        <StatTile label="Average bedtime" value={avgBed !== undefined ? fmtClock(avgBed) : dash} />
-        <StatTile label="Average wake time" value={avgWake !== undefined ? fmtClock(avgWake) : dash} />
-        <StatTile label="Nights tracked" value={`${tracked.length} of ${nights.length}`} delta={naps.length ? `plus ${naps.length} nap${naps.length > 1 ? "s" : ""}` : undefined} />
-      </div>
+      {isDay && <NightDetail night={night} baseline={baseNights} status={vsGoal(night?.asleep || undefined)} />}
+
       <div className="dash-grid">
-        <ChartCard title="Time asleep by stage" subtitle="Main sleep, by the night's wake-up date" loading={loading}
-          legend={[{ label: "Deep", color: S1, shape: "rect" }, { label: "Light", color: S2, shape: "rect" }, { label: "REM", color: S3, shape: "rect" }, { label: "Awake", color: S4, shape: "rect" }]}
-          table={{ columns: ["Night", "Asleep", "Deep", "Light", "REM", "Awake"], rows: nights.map((x) => [fmtShortDate(x.date), x.asleep ? fmtDuration(x.asleep) : dash, x.main ? fmtDuration(x.stages.deep) : dash, x.main ? fmtDuration(x.stages.light + x.stages.asleep) : dash, x.main ? fmtDuration(x.stages.rem) : dash, x.main ? fmtDuration(x.stages.awake + x.stages.restless) : dash]) }}>
-          <ColumnChart
-            rows={nights.map((x) => ({ date: x.date, values: x.main ? [h(x.stages.deep), h(x.stages.light + x.stages.asleep), h(x.stages.rem), h(x.stages.awake + x.stages.restless)] : [undefined, undefined, undefined, undefined] }))}
-            series={[{ label: "Deep", color: S1 }, { label: "Light", color: S2 }, { label: "REM", color: S3 }, { label: "Awake", color: S4 }]}
-            format={fmtHours} tickFormat={(v) => `${v}h`} />
+        <ChartCard title="Time asleep" goal={<GoalEditor goalKey="sleepMinutes" label="Sleep" unit=" h" scale={60} format={fmtDuration} />} value={avgAsleep !== undefined ? fmtDuration(avgAsleep) : dash} unit=" on average"
+          subtitle={`${tracked.length} of ${shown.length} nights tracked${goals.sleepMinutes ? ` · goal ${fmtDuration(goals.sleepMinutes)}` : ""}`} status={vsGoal(avgAsleep)} loading={ctx.loading}
+          legend={[{ label: "Deep", color: "var(--stage-deep)", shape: "rect" }, { label: "REM", color: "var(--stage-rem)", shape: "rect" }, { label: "Light", color: "var(--stage-light)", shape: "rect" }, { label: "Awake", color: "var(--stage-awake)", shape: "rect" }]}
+          table={{ columns: ["Night", "Asleep", "Deep", "REM", "Light", "Awake"], rows: shown.map((n) => [fmtShortDate(n.date), n.asleep ? fmtDuration(n.asleep) : dash, n.main ? fmtDuration(n.stages.deep) : dash, n.main ? fmtDuration(n.stages.rem) : dash, n.main ? fmtDuration(n.stages.light + n.stages.asleep) : dash, n.main ? fmtDuration(n.stages.awake + n.stages.restless) : dash]) }}>
+          <ColumnChart today={ctx.today}
+            rows={nights.map((n) => ({ date: n.date, values: n.main ? [h(n.stages.deep), h(n.stages.rem), h(n.stages.light + n.stages.asleep), h(n.stages.awake + n.stages.restless)] : [undefined, undefined, undefined, undefined] }))}
+            series={[{ label: "Deep", color: "var(--stage-deep)" }, { label: "REM", color: "var(--stage-rem)" }, { label: "Light", color: "var(--stage-light)" }, { label: "Awake", color: "var(--stage-awake)" }]}
+            format={(v) => fmtDuration(v * 60)} tickFormat={(v) => `${v}h`}
+            reference={goals.sleepMinutes ? { value: h(goals.sleepMinutes), label: `Goal ${fmtDuration(goals.sleepMinutes)}` } : undefined} />
         </ChartCard>
 
-        <ChartCard title="Sleep schedule" subtitle="Bedtime to wake time, main sleep" loading={loading}
-          table={{ columns: ["Night", "Bedtime", "Wake", "In bed"], rows: nights.map((x, i) => [fmtShortDate(x.date), sched[i]!.start !== undefined ? fmtClock(sched[i]!.start!) : dash, sched[i]!.end !== undefined ? fmtClock(sched[i]!.end!) : dash, x.main ? fmtDuration(x.main.minutesInBed) : dash]) }}>
-          <ScheduleChart rows={sched} color={S1} />
+        <ChartCard title="Sleep schedule" value={avgStart !== undefined && avgEnd !== undefined ? `${fmtClock(avgStart)} – ${fmtClock(avgEnd)}` : dash}
+          subtitle="Average bedtime to wake time" loading={ctx.loading}
+          table={{ columns: ["Night", "Bedtime", "Wake", "In bed"], rows: nights.map((n, i) => ({ n, s: sched[i]! })).filter(({ n }) => n.date <= ctx.today).map(({ n, s }) => [fmtShortDate(n.date), s.start !== undefined ? fmtClock(s.start) : dash, s.end !== undefined ? fmtClock(s.end) : dash, n.main ? fmtDuration(n.main.minutesInBed) : dash]) }}>
+          <ScheduleChart rows={sched} color="var(--sleep)" />
         </ChartCard>
       </div>
+
       {naps.length > 0 && (
         <section className="viz-card">
           <h3 className="viz-card-title">Naps</h3>
           <table className="viz-table">
             <thead><tr><th>Date</th><th>Start</th><th>Asleep</th></tr></thead>
-            <tbody>
-              {[...naps].reverse().map((s) => (
-                <tr key={s.id}><td>{fmtLongDate(s.date)}</td><td>{fmtClock(minutesFrom(s.date, s.startLocal))}</td><td>{fmtDuration(s.minutesAsleep)}</td></tr>
-              ))}
-            </tbody>
+            <tbody>{[...naps].reverse().map((s) => <tr key={s.id}><td>{fmtLongDate(s.date)}</td><td>{fmtClock(minutesFrom(s.date, s.startLocal))}</td><td>{fmtDuration(s.minutesAsleep)}</td></tr>)}</tbody>
           </table>
         </section>
       )}
@@ -242,36 +281,123 @@ export function SleepView({ data, loading }: ViewProps) {
   );
 }
 
+type NightView = "timeline" | "usual" | "average";
+
+/**
+ * The night card, after the owner's reference screenshot: headline duration
+ * and times, an efficiency sentence, then one of three views chosen with chips
+ * underneath: the stage timeline, each stage's share of the night compared
+ * with the last 30 nights (dashed box = usual range), or the 30-day averages.
+ */
+function NightDetail({ night, baseline, status }: { night: Night | undefined; baseline: Night[]; status?: Status }) {
+  const [view, setView] = useState<NightView>("timeline");
+  const main = night?.main;
+  if (!main || !night) {
+    return <section className="viz-card"><h3 className="viz-card-title">Sleep duration</h3><p className="viz-card-sub">No sleep recorded for this night.</p></section>;
+  }
+  const efficiency = efficiencyPct(night);
+  const rows = compareStages(night, baseline);
+  const history = baseline.filter((b) => b.main).length;
+  const pct = (v: number) => `${Math.round(v)}%`;
+
+  return (
+    <section className="viz-card night-card" aria-labelledby="night-h">
+      <div className="viz-card-head">
+        <div>
+          <h3 className="viz-card-title" id="night-h">Sleep duration</h3>
+          <p className="viz-card-value">{fmtDuration(night.asleep)}<small>{main.startLocal.slice(11, 16)} – {main.endLocal.slice(11, 16)}</small></p>
+          <p className="viz-card-sub">
+            You spent {fmtDuration(main.minutesInBed)} in bed, with a sleep efficiency of {efficiency !== undefined ? pct(efficiency) : "—"}.{" "}
+            {efficiencySentence(night, baseline) ?? ""}
+          </p>
+        </div>
+        <div className="viz-card-actions">
+          {status && <Pill tone={status.tone}>{status.text}</Pill>}
+          <GoalEditor goalKey="sleepMinutes" label="Sleep" unit=" h" scale={60} format={fmtDuration} />
+        </div>
+      </div>
+
+      <div className="night-view">
+        {view === "timeline" && <SleepTimeline session={main} />}
+        {view !== "timeline" && (
+          <div className="ranges flat stage-bars">
+            {rows.map((r) => {
+              const usual = r.usual ? { lo: Math.max(0, r.usual.lo), hi: Math.min(100, r.usual.hi) } : undefined;
+              return view === "usual" ? (
+                <RangeBar key={r.key} label={r.label} detail={`${pct(r.pct)} · ${fmtDuration(r.minutes)}`} value={r.pct} max={100}
+                  color={r.color} range={usual} rangeTint={r.color} status={r.status} />
+              ) : (
+                <RangeBar key={r.key} label={r.label}
+                  detail={r.avgPct !== undefined && r.avgMinutes !== undefined ? `${pct(r.avgPct)} · ${fmtDuration(r.avgMinutes)}` : "No history"}
+                  value={r.avgPct} max={100} color={r.color} />
+              );
+            })}
+            <p className="range-note">
+              {view === "usual"
+                ? <><i className="range-key" /> Your usual range: average ± 1 standard deviation over your last {history} nights</>
+                : <>Average share of each night over your last {history} nights</>}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="meal-chips night-chips" role="group" aria-label="Sleep view">
+        {([["timeline", "Timeline"], ["usual", "Compared with usual"], ["average", "30-day average"]] as const).map(([k, label]) => (
+          <button key={k} className="chip" aria-pressed={view === k} onClick={() => setView(k)}>
+            {view === k && <Icon.check />}{label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ── Body ─────────────────────────────────────────────────────────────────────
 
-export function BodyView({ data, loading, units }: ViewProps) {
-  const days = data.days;
-  const W = weight(units);
-  const wRows = days.map((d) => ({ date: d.date, value: d.weightKg !== undefined ? W.convert(d.weightKg) : undefined }));
-  const fmtW = W.formatConverted;
+export function BodyView(ctx: ViewCtx) {
+  const W = weight(ctx.units);
+  const m = byDate(ctx.data);
+  const wVals = series(ctx, (d) => (d.weightKg !== undefined ? W.convert(d.weightKg) : undefined));
+  // Average over baseline + displayed days so the line has history at the start of the range.
+  const allDays = new Map([...(ctx.baseline?.days ?? []), ...ctx.data.days].map((d) => [d.date, d]));
+  const sorted = [...allDays.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const rolled = rollingAverage(sorted.map((d) => (d.weightKg !== undefined ? W.convert(d.weightKg) : undefined)));
+  const rollByDate = new Map(sorted.map((d, i) => [d.date, rolled[i]]));
+  const wAvg = ctx.dates.map((d) => rollByDate.get(d));
+  const latestW = lastWith(upToAnchor(ctx), (d) => d.weightKg);
+  const restTyp = typical(ctx, (d) => d.restingHr);
+  const latestRest = lastWith(upToAnchor(ctx), (d) => d.restingHr);
+  const latestFat = lastWith(upToAnchor(ctx), (d) => d.bodyFatPct);
+  const hr = series(ctx, (d) => d.heartRate?.avg);
+  const rest = series(ctx, (d) => d.restingHr);
+  const fat = series(ctx, (d) => d.bodyFatPct);
 
   return (
     <div className="dash">
       <div className="dash-grid">
-        <ChartCard title="Weight" subtitle="Daily average of logged weigh-ins" loading={loading}
-          table={{ columns: ["Date", `Weight (${W.unit})`], rows: wRows.map((r) => [fmtShortDate(r.date), r.value !== undefined ? r.value.toFixed(1) : dash]) }}>
-          <LineChart rows={wRows} label="Weight" color={S1} format={fmtW} connectGaps />
+        <ChartCard title="Weight" value={latestW ? W.convert(latestW.value).toFixed(1) : dash} unit={latestW ? ` ${W.unit}` : undefined}
+          subtitle={latestW ? (latestW.date === ctx.today ? "Weighed today" : `Last weigh-in ${fmtShortDate(latestW.date)}`) : "No weigh-ins in this period"} loading={ctx.loading}
+          legend={[{ label: "Daily", color: S.body, shape: "line" }, { label: "7-day average", color: "var(--viz-muted)", shape: "line" }]}
+          table={table(ctx, [`Weight (${W.unit})`, "7-day avg"], (date, d) => [d?.weightKg !== undefined ? W.convert(d.weightKg).toFixed(1) : dash, rollByDate.get(date)?.toFixed(1) ?? dash])}>
+          <LineChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, value: wVals[i] }))} label="Weight" color={S.body} format={W.formatConverted} connectGaps
+            secondary={{ label: "7-day average", values: wAvg, color: "var(--viz-muted)" }} />
         </ChartCard>
 
-        <ChartCard title="Body fat" loading={loading}
-          table={{ columns: ["Date", "Body fat"], rows: days.map((d) => [fmtShortDate(d.date), d.bodyFatPct !== undefined ? fmtPct(d.bodyFatPct) : dash]) }}>
-          <LineChart rows={days.map((d) => ({ date: d.date, value: d.bodyFatPct }))} label="Body fat" color={S1} format={fmtPct} connectGaps />
+        <ChartCard title="Resting heart rate" value={latestRest ? fmtInt(latestRest.value) : dash} unit={latestRest ? " bpm" : undefined} status={rangeStatus(latestRest?.value, restTyp)} loading={ctx.loading}
+          legend={restTyp ? [{ label: "Resting heart rate", color: S.heart, shape: "line" }, { label: `Your typical range, ${fmtInt(restTyp.lo)}–${fmtInt(restTyp.hi)} bpm (last 30 days)`, color: "", shape: "band" }] : undefined}
+          table={table(ctx, ["Resting HR"], (_, d) => [d?.restingHr !== undefined ? fmtBpm(d.restingHr) : dash])}>
+          <LineChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, value: rest[i] }))} label="Resting HR" color={S.heart} format={fmtBpm} typical={restTyp} />
         </ChartCard>
 
-        <ChartCard title="Resting heart rate" loading={loading}
-          table={{ columns: ["Date", "Resting HR"], rows: days.map((d) => [fmtShortDate(d.date), d.restingHr !== undefined ? fmtBpm(d.restingHr) : dash]) }}>
-          <LineChart rows={days.map((d) => ({ date: d.date, value: d.restingHr }))} label="Resting HR" color={S1} format={fmtBpm} />
+        <ChartCard title="Heart rate" value={avg(hr) !== undefined ? fmtInt(avg(hr)!) : dash} unit=" bpm on average" subtitle="Daily average, shaded from lowest to highest" loading={ctx.loading}
+          table={table(ctx, ["Average", "Low", "High"], (_, d) => [d?.heartRate ? fmtBpm(d.heartRate.avg) : dash, d?.heartRate ? fmtBpm(d.heartRate.min) : dash, d?.heartRate ? fmtBpm(d.heartRate.max) : dash])}>
+          <LineChart today={ctx.today} rows={ctx.dates.map((date) => ({ date, value: m.get(date)?.heartRate?.avg, min: m.get(date)?.heartRate?.min, max: m.get(date)?.heartRate?.max }))}
+            label="Average" bandLabel="Low – high" color={S.heart} format={fmtBpm} />
         </ChartCard>
 
-        <ChartCard title="Heart rate" subtitle="Daily average, shaded from minimum to maximum" loading={loading}
-          table={{ columns: ["Date", "Average", "Min", "Max"], rows: days.map((d) => [fmtShortDate(d.date), d.heartRate ? fmtBpm(d.heartRate.avg) : dash, d.heartRate ? fmtBpm(d.heartRate.min) : dash, d.heartRate ? fmtBpm(d.heartRate.max) : dash]) }}>
-          <LineChart rows={days.map((d) => ({ date: d.date, value: d.heartRate?.avg, min: d.heartRate?.min, max: d.heartRate?.max }))}
-            label="Average" bandLabel="Min – max" color={S1} format={fmtBpm} />
+        <ChartCard title="Body fat" value={latestFat ? fmtPct(latestFat.value) : dash} loading={ctx.loading}
+          table={table(ctx, ["Body fat"], (_, d) => [d?.bodyFatPct !== undefined ? fmtPct(d.bodyFatPct) : dash])}>
+          <LineChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, value: fat[i] }))} label="Body fat" color={S.body} format={fmtPct} connectGaps />
         </ChartCard>
       </div>
     </div>

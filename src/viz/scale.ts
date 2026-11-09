@@ -1,17 +1,24 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Track an element's content width (charts render at real pixel width). */
-export function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
-  const ref = useRef<T>(null);
+/**
+ * Track an element's content width (charts render at real pixel width).
+ * Uses a callback ref so the observer follows whichever element is mounted:
+ * charts swap between an empty state and the plot, and a once-only effect
+ * would keep watching the detached element and report width 0.
+ */
+export function useWidth<T extends HTMLElement>(): [(el: T | null) => void, number] {
   const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
     if (!el) return;
+    setWidth(Math.floor(el.getBoundingClientRect().width));
     const ro = new ResizeObserver(([entry]) => setWidth(Math.floor(entry!.contentRect.width)));
     ro.observe(el);
-    setWidth(Math.floor(el.getBoundingClientRect().width));
-    return () => ro.disconnect();
+    observer.current = ro;
   }, []);
+  useEffect(() => () => observer.current?.disconnect(), []);
   return [ref, width];
 }
 

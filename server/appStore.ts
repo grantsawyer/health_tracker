@@ -34,33 +34,32 @@ db.exec(`
     next_attempt_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS pending_due ON pending_writes(failed, next_attempt_at);
+  CREATE TABLE IF NOT EXISTS user_settings (
+    user_key   TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_key, key)
+  );
 `);
 
 export const currentUserKey = () => loadTokens()?.email ?? "local";
 
-// ── Favorites ────────────────────────────────────────────────────────────────
-export interface FavoriteRow<T> {
-  id: string;
-  label: string;
-  payload: T;
-  createdAt: number;
-}
-
-export function listFavorites<T>(userKey: string): FavoriteRow<T>[] {
-  const rows = db.prepare("SELECT id, label, payload, created_at FROM favorites WHERE user_key = ? ORDER BY label COLLATE NOCASE").all(userKey) as {
-    id: string; label: string; payload: string; created_at: number;
+// ── Legacy favorites table ───────────────────────────────────────────────────
+// Favorites now live in user_settings ("favorites"), the same shape the browser
+// build uses. This read-only accessor exists only for the one-time migration in
+// server/platform.ts; the table is no longer written.
+export function legacyFavoritesByUser(): Map<string, { id: string; label: string; payload: unknown; createdAt: number }[]> {
+  const rows = db.prepare("SELECT id, user_key, label, payload, created_at FROM favorites ORDER BY created_at").all() as {
+    id: string; user_key: string; label: string; payload: string; created_at: number;
   }[];
-  return rows.map((r) => ({ id: r.id, label: r.label, payload: JSON.parse(r.payload) as T, createdAt: r.created_at }));
-}
-
-export function addFavorite(userKey: string, label: string, payload: unknown): string {
-  const id = randomUUID();
-  db.prepare("INSERT INTO favorites (id, user_key, label, payload, created_at) VALUES (?, ?, ?, ?, ?)").run(id, userKey, label, JSON.stringify(payload), Date.now());
-  return id;
-}
-
-export function deleteFavorite(userKey: string, id: string): boolean {
-  return db.prepare("DELETE FROM favorites WHERE id = ? AND user_key = ?").run(id, userKey).changes > 0;
+  const out = new Map<string, { id: string; label: string; payload: unknown; createdAt: number }[]>();
+  for (const r of rows) {
+    const list = out.get(r.user_key) ?? [];
+    list.push({ id: r.id, label: r.label, payload: JSON.parse(r.payload), createdAt: r.created_at });
+    out.set(r.user_key, list);
+  }
+  return out;
 }
 
 // ── Pending writes (retry queue) ─────────────────────────────────────────────
@@ -121,4 +120,14 @@ export function markAttempt(id: string, error: string, permanent: boolean, attem
 /** Make every non-failed entry (or all, including failed) for a user due now. */
 export function makeDueNow(userKey: string, includeFailed: boolean): void {
   db.prepare(`UPDATE pending_writes SET next_attempt_at = 0${includeFailed ? ", failed = 0" : ""} WHERE user_key = ?`).run(userKey);
+}
+
+// ── Per-user settings (e.g. goals) ───────────────────────────────────────────
+export function getSetting<T>(userKey: string, key: string): T | undefined {
+  const row = db.prepare("SELECT value FROM user_settings WHERE user_key = ? AND key = ?").get(userKey, key) as { value: string } | undefined;
+  return row ? (JSON.parse(row.value) as T) : undefined;
+}
+
+export function putSetting(userKey: string, key: string, value: unknown): void {
+  db.prepare("INSERT OR REPLACE INTO user_settings (user_key, key, value, updated_at) VALUES (?, ?, ?, ?)").run(userKey, key, JSON.stringify(value), Date.now());
 }

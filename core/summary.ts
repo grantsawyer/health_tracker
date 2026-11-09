@@ -1,6 +1,6 @@
 import { getPoints, getRollup, type Cached } from "./dataService.js";
-import { addDays, type CivilDateTime, type DailyRollupPoint, type DataPoint } from "./googleHealth.js";
-import { fullScope } from "./oauth.js";
+import { addDays, type CivilDateTime, type DailyRollupPoint, type DataPoint } from "./healthClient.js";
+import { fullScope } from "../shared/scopes.js";
 import { dataTypeById, type DataTypeInfo } from "../shared/dataTypes.js";
 import type { DailySummary, ExerciseSession, SleepSession, SummaryResponse } from "../shared/summary.js";
 
@@ -101,6 +101,16 @@ export function mapSleep(p: DataPoint): SleepSession | null {
     const key = String(st.type).toLowerCase() as keyof typeof stages;
     if (key in stages) stages[key] += num(st.minutes) ?? 0;
   }
+  // Stage-by-stage timeline (minutes from session start), for the hypnogram view.
+  const t0 = Date.parse(s.interval.startTime);
+  const segments: SleepSession["segments"] = ((s.stages ?? []) as Loose[])
+    .map((st) => ({
+      stage: String(st.type ?? "").toLowerCase() as SleepSession["segments"][number]["stage"],
+      from: Math.round((Date.parse(st.startTime) - t0) / 60000),
+      to: Math.round((Date.parse(st.endTime) - t0) / 60000),
+    }))
+    .filter((x) => ["deep", "light", "rem", "awake", "asleep", "restless"].includes(x.stage) && x.to > x.from)
+    .sort((a, b) => a.from - b.from);
   return {
     id: p.name ?? `${startLocal}-sleep`,
     date: endLocal.slice(0, 10),
@@ -111,6 +121,7 @@ export function mapSleep(p: DataPoint): SleepSession | null {
     minutesAwake: num(s.summary?.minutesAwake) ?? 0,
     minutesInBed: num(s.summary?.minutesInSleepPeriod) ?? Math.round((Date.parse(s.interval.endTime) - Date.parse(s.interval.startTime)) / 60000),
     stages,
+    segments,
     device: (p.dataSource as Loose | undefined)?.device?.displayName,
   };
 }

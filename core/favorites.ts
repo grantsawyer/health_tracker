@@ -1,5 +1,5 @@
-import { addFavorite, currentUserKey, deleteFavorite, listFavorites } from "./appStore.js";
-import { FoodInputError } from "./food.js";
+import { FoodInputError } from "./errors.js";
+import { platform } from "./platform.js";
 import type { FavoriteFood, FoodTemplate } from "../shared/food.js";
 
 const FOOD_NAME = /^users\/me\/dataTypes\/food\/dataPoints\/[^/]+$/;
@@ -41,19 +41,35 @@ export function parseTemplate(body: unknown): FoodTemplate {
   throw new FoodInputError('kind must be "food" or "quick"');
 }
 
-export const getFavorites = (): FavoriteFood[] =>
-  listFavorites<FoodTemplate>(currentUserKey()).map((r) => ({ id: r.id, template: r.payload }));
+/** Stored per user as one settings entry (the browser build keeps it in the same shape). */
+interface StoredFavorite {
+  id: string;
+  label: string;
+  template: FoodTemplate;
+  createdAt: number;
+}
+const load = async () => (await platform().settings.get<StoredFavorite[]>("favorites")) ?? [];
+const byLabel = (a: StoredFavorite, b: StoredFavorite) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
 
-export function saveFavorite(body: unknown): FavoriteFood {
-  const template = parseTemplate(body);
-  const userKey = currentUserKey();
-  const existing = listFavorites<FoodTemplate>(userKey);
-  if (existing.length >= MAX_FAVORITES) throw new FoodInputError(`You can keep up to ${MAX_FAVORITES} favorites`);
-  const label = template.kind === "food" ? `${template.displayName} · ${template.amount} ${template.label ?? ""}`.trim() : template.displayName;
-  return { id: addFavorite(userKey, label, template), template };
+export async function getFavorites(): Promise<FavoriteFood[]> {
+  return (await load()).sort(byLabel).map((f) => ({ id: f.id, template: f.template }));
 }
 
-export function removeFavorite(id: string): boolean {
+export async function saveFavorite(body: unknown): Promise<FavoriteFood> {
+  const template = parseTemplate(body);
+  const existing = await load();
+  if (existing.length >= MAX_FAVORITES) throw new FoodInputError(`You can keep up to ${MAX_FAVORITES} favorites`);
+  const label = template.kind === "food" ? `${template.displayName} · ${template.amount} ${template.label ?? ""}`.trim() : template.displayName;
+  const fav: StoredFavorite = { id: globalThis.crypto.randomUUID(), label, template, createdAt: Date.now() };
+  await platform().settings.put("favorites", [...existing, fav]);
+  return { id: fav.id, template };
+}
+
+export async function removeFavorite(id: string): Promise<boolean> {
   if (typeof id !== "string" || id.length > 64) throw new FoodInputError("Invalid favorite id");
-  return deleteFavorite(currentUserKey(), id);
+  const existing = await load();
+  const next = existing.filter((f) => f.id !== id);
+  if (next.length === existing.length) return false;
+  await platform().settings.put("favorites", next);
+  return true;
 }

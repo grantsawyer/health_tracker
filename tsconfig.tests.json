@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "tests",
+    "src",
+    "shared",
+    "server",
+    "core",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
+}

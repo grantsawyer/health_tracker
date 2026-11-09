@@ -32,8 +32,10 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
 
   const innerW = Math.max(0, width - M.left - M.right);
   const innerH = height - M.top - M.bottom;
-  const lo = Math.floor(Math.min(...data.map((r) => r.start!)) / 120) * 120;
-  const hi = Math.ceil(Math.max(...data.map((r) => r.end!)) / 120) * 120;
+  // Axis spans the data, but never beyond 6 PM the evening before → 3 PM, so one
+  // odd evening session can't squash every normal night (bars outside are clipped).
+  const lo = Math.max(-360, Math.floor(Math.min(...data.map((r) => r.start!)) / 120) * 120);
+  const hi = Math.min(900, Math.ceil(Math.max(...data.map((r) => r.end!)) / 120) * 120);
   const y = linear(lo, hi, 0, innerH);
   const ticks: number[] = [];
   const step = hi - lo > 12 * 60 ? 240 : 120;
@@ -53,16 +55,19 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
             setActive((cur) => Math.max(0, Math.min(rows.length - 1, (cur ?? rows.length - 1) + (e.key === "ArrowRight" ? 1 : -1))));
           }}
           onBlur={() => setActive(null)}>
+          <defs><clipPath id="sched-clip"><rect x={0} y={0} width={innerW} height={innerH} /></clipPath></defs>
           <g transform={`translate(${M.left},${M.top})`}>
             <g className="viz-grid">{ticks.map((t) => <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} />)}</g>
             {ticks.map((t) => <text key={t} x={-8} y={y(t)} dy="0.32em" textAnchor="end">{fmtClock(t)}</text>)}
             {active !== null && <rect className="viz-col-hover" x={active * band} y={0} width={band} height={innerH} />}
+            <g clipPath="url(#sched-clip)">
             {rows.map((r, i) =>
               r.start !== undefined && r.end !== undefined ? (
                 <rect key={r.date} x={i * band + (band - barW) / 2} y={y(r.start)} width={barW}
-                  height={Math.max(2, y(r.end) - y(r.start))} rx={Math.min(4, barW / 2)} fill={color} />
+                  height={Math.max(2, y(r.end) - y(r.start))} rx={barW / 2} fill={color} />
               ) : null,
             )}
+            </g>
             {rows.map((r, i) => labels.has(i) ? <text key={r.date} x={i * band + band / 2} y={innerH + 15} textAnchor="middle">{fmtShortDate(r.date)}</text> : null)}
             {rows.map((r, i) => <rect key={r.date} className="viz-hit" x={i * band} y={0} width={band} height={innerH} onMouseMove={() => setActive(i)} />)}
           </g>

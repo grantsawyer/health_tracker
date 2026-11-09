@@ -1,14 +1,10 @@
-import { cacheGet, cacheInvalidateType, cachePut } from "./cache.js";
-import { credentials } from "./config.js";
-import { getPoints } from "./dataService.js";
+import { getPoints, withCache } from "./dataService.js";
 import {
   HealthApiError, SOURCE_FAMILIES, addDays, batchDeleteDataPoints, createDataPoint, healthFetch, patchDataPoint, type DataPoint,
-} from "./googleHealth.js";
+} from "./healthClient.js";
 import { toLocal } from "./summary.js";
-import { ReauthRequiredError } from "./oauth.js";
-import {
-  currentUserKey, duePending, enqueuePending, listPending, makeDueNow, markAttempt, removePending, type PendingRow,
-} from "./appStore.js";
+import { FoodInputError, NotEditableError, ReauthRequiredError } from "./errors.js";
+import { platform, type PendingRow } from "./platform.js";
 import { dataTypeById } from "../shared/dataTypes.js";
 import {
   LOG_MEAL_TYPES, type FoodLogDay, type FoodLogEntry, type FoodServingOption, type LibraryFood,
@@ -17,12 +13,7 @@ import {
 
 type Loose = Record<string, any>;
 
-export class FoodInputError extends Error {}
-export class NotEditableError extends Error {
-  constructor() {
-    super("This entry was logged by another app, so Health Tracker can't change it. Edit it there instead.");
-  }
-}
+export { FoodInputError, NotEditableError } from "./errors.js";
 
 const NUTRITION_LOG = dataTypeById("nutrition-log")!;
 /** Normalize "users/{numericId}/…" (as returned) to "users/me/…" (as accepted in requests). */
@@ -50,13 +41,7 @@ async function listAll(type: string, maxPages: number, stop?: (page: DataPoint[]
 }
 
 async function cached<T>(key: string, type: string, ttlMs: number, fresh: boolean, load: () => Promise<T>): Promise<T> {
-  if (!fresh) {
-    const hit = cacheGet<T>(key);
-    if (hit) return hit.value;
-  }
-  const v = await load();
-  cachePut(key, type, v, ttlMs);
-  return v;
+  return (await withCache(key, type, ttlMs, fresh, load)).value;
 }
 
 // ── Units (static catalog, ~hundreds of entries) ────────────────────────────
@@ -137,7 +122,8 @@ async function resolveUnit(foodName: string, label: string | undefined): Promise
 // ── Log entries ──────────────────────────────────────────────────────────────
 function isOurs(p: DataPoint): boolean {
   const app = (p.dataSource as Loose | undefined)?.application;
-  return Boolean(credentials.clientId) && app?.googleWebClientId === credentials.clientId;
+  const clientId = platform().clientId();
+  return Boolean(clientId) && app?.googleWebClientId === clientId;
 }
 
 function mapEntry(p: DataPoint, units: Record<string, { label: string; plural?: string }>): FoodLogEntry | null {
@@ -330,20 +316,20 @@ export async function createEntry(e: NewFoodLogEntry): Promise<CreateResult> {
   const startTime = fingerprintStart(e);
   try {
     const op = await createDataPoint("nutrition-log", { nutritionLog: toNutritionLog(e, startTime) });
-    cacheInvalidateType("nutrition-log");
+    await platform().cache.invalidateType("nutrition-log");
     return { status: "saved", entry: await created(op as Loose) };
   } catch (err) {
     if (!isTransient(err)) throw err;
-    const userKey = currentUserKey();
-    const id = enqueuePending(userKey, e, startTime, await entryLabel(e), (err as Error).message);
-    console.warn(`[food] queued entry ${id} for retry: ${(err as Error).message}`);
-    const row = listPending<NewFoodLogEntry>(userKey).find((r) => r.id === id)!;
+    const pending = platform().pending;
+    const id = await pending.enqueue(e, startTime, await entryLabel(e), (err as Error).message);
+    platform().log.warn(`[food] queued entry ${id} for retry: ${(err as Error).message}`);
+    const row = (await pending.list<NewFoodLogEntry>()).find((r) => r.id === id)!;
     return { status: "queued", pending: toPendingInfo(row) };
   }
 }
 
-export const listPendingWrites = () => listPending<NewFoodLogEntry>(currentUserKey()).map(toPendingInfo);
-export const discardPendingWrite = (id: string) => removePending(id, currentUserKey());
+export const listPendingWrites = async () => (await platform().pending.list<NewFoodLogEntry>()).map(toPendingInfo);
+export const discardPendingWrite = (id: string) => platform().pending.remove(id, true);
 
 /** True if this app already wrote a nutrition log with exactly this start time (a "lost" success). */
 async function alreadyWritten(e: NewFoodLogEntry, startTime: string): Promise<boolean> {
@@ -357,32 +343,33 @@ async function alreadyWritten(e: NewFoodLogEntry, startTime: string): Promise<bo
 let processing = false;
 /** Retry due queue entries. Runs on a timer and on demand. */
 export async function processPendingWrites(): Promise<{ sent: number; remaining: number }> {
-  if (processing) return { sent: 0, remaining: duePending().length };
+  const pending = platform().pending;
+  if (processing) return { sent: 0, remaining: (await pending.due()).length };
   processing = true;
   let sent = 0;
   try {
-    for (const row of duePending<NewFoodLogEntry>()) {
+    for (const row of await pending.due<NewFoodLogEntry>()) {
       try {
         if (!(await alreadyWritten(row.entry, row.startTime))) {
           await createDataPoint("nutrition-log", { nutritionLog: toNutritionLog(row.entry, row.startTime) });
         }
-        removePending(row.id);
-        cacheInvalidateType("nutrition-log");
+        await pending.remove(row.id, false);
+        await platform().cache.invalidateType("nutrition-log");
         sent++;
-        console.log(`[food] synced queued entry ${row.id} (${row.label})`);
+        platform().log.info(`[food] synced queued entry ${row.id} (${row.label})`);
       } catch (err) {
         if (err instanceof ReauthRequiredError) break; // nothing will work until the user signs in again
-        markAttempt(row.id, (err as Error).message, !isTransient(err), row.attempts + 1);
+        await pending.markAttempt(row.id, (err as Error).message, !isTransient(err), row.attempts + 1);
       }
     }
   } finally {
     processing = false;
   }
-  return { sent, remaining: duePending().length };
+  return { sent, remaining: (await pending.due()).length };
 }
 
-export function retryAllPending(includeFailed: boolean) {
-  makeDueNow(currentUserKey(), includeFailed);
+export async function retryAllPending(includeFailed: boolean) {
+  await platform().pending.makeDueNow(includeFailed);
   return processPendingWrites();
 }
 
@@ -409,12 +396,12 @@ export async function updateEntry(id: string, e: NewFoodLogEntry): Promise<FoodL
     result = await created((await createDataPoint("nutrition-log", { nutritionLog: toNutritionLog(e) })) as Loose);
     await batchDeleteDataPoints([id]);
   }
-  cacheInvalidateType("nutrition-log");
+  await platform().cache.invalidateType("nutrition-log");
   return result;
 }
 
 export async function deleteEntry(id: string): Promise<void> {
   await getOwnEntry(id);
   await batchDeleteDataPoints([id]);
-  cacheInvalidateType("nutrition-log");
+  await platform().cache.invalidateType("nutrition-log");
 }

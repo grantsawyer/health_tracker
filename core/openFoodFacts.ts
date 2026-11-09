@@ -1,26 +1,22 @@
-import { cacheGet, cachePut } from "./cache.js";
+import { OffError } from "./errors.js";
+import { platform } from "./platform.js";
 import type { OffNutrition, OffProduct } from "../shared/food.js";
+
+export { OffError } from "./errors.js";
 
 /**
  * Open Food Facts (free, public product database) for food search and barcode
  * lookup. Results are logged to Google Health as quick-add entries.
  *
  * Usage policy (openfoodfacts.github.io/openfoodfacts-server/api, checked 2026-11-08):
- * - custom User-Agent "AppName/Version (contact)"; set OFF_CONTACT in
- *   ~/.health_tracker/.env to include a contact email (not sent by default);
+ * - identify the app with a User-Agent; the host supplies it (platform().offUserAgent);
  * - ≤10 searches/min and ≤15 product reads/min per IP; no search-as-you-type.
  *   Enforced here with sliding windows, plus caching (search 1 day, products 30 days).
  */
-const USER_AGENT = `HealthTracker/0.1 (${process.env.OFF_CONTACT?.trim() || "personal non-commercial use"})`;
 const SEARCH_URL = "https://search.openfoodfacts.org/search";
 const PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product";
 const FIELDS = "code,product_name,brands,serving_size,serving_quantity,nutriments";
 
-export class OffError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
 
 // ── Rate limiting (sliding one-minute windows) ───────────────────────────────
 const windows = { search: [] as number[], product: [] as number[] };
@@ -39,7 +35,7 @@ function take(kind: keyof typeof windows) {
 async function getJson(url: string): Promise<any> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+    res = await platform().fetch(url, { headers: { "User-Agent": platform().offUserAgent, Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
   } catch (err) {
     throw new OffError(503, `Couldn't reach Open Food Facts (${(err as Error).message}).`);
   }
@@ -94,24 +90,24 @@ export async function searchFoods(query: string): Promise<OffProduct[]> {
   const q = query.trim().replace(/\s+/g, " ");
   if (q.length < 2 || q.length > 100) throw new OffError(400, "Search for 2–100 characters");
   const key = `off:search:${q.toLowerCase()}`;
-  const hit = cacheGet<OffProduct[]>(key);
+  const hit = await platform().cache.get<OffProduct[]>(key);
   if (hit) return hit.value;
   take("search");
   const params = new URLSearchParams({ q, page_size: "25", fields: FIELDS, langs: "en" });
   const data = await getJson(`${SEARCH_URL}?${params}`);
   const products = ((data?.hits ?? []) as unknown[]).map(toProduct).filter((p): p is OffProduct => p !== null);
-  cachePut(key, "off", products, 24 * 3600_000);
+  await platform().cache.put(key, "off", products, 24 * 3600_000);
   return products;
 }
 
 export async function productByBarcode(code: string): Promise<OffProduct | null> {
   if (!/^\d{6,14}$/.test(code)) throw new OffError(400, "A barcode is 6–14 digits");
   const key = `off:product:${code}`;
-  const hit = cacheGet<OffProduct | null>(key);
+  const hit = await platform().cache.get<OffProduct | null>(key);
   if (hit) return hit.value;
   take("product");
   const data = await getJson(`${PRODUCT_URL}/${code}.json?fields=${FIELDS}`);
   const product = data?.status === 1 ? toProduct({ ...data.product, code: data.product?.code ?? code }) : null;
-  cachePut(key, "off", product, (product ? 30 : 1) * 24 * 3600_000);
+  await platform().cache.put(key, "off", product, (product ? 30 : 1) * 24 * 3600_000);
   return product;
 }

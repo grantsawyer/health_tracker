@@ -49,9 +49,3 @@ export function cacheInvalidateType(dataType: string): void {
 export function cacheClear(): void {
   db.exec("DELETE FROM api_cache");
 }
-
-/** Ranges that include today (or later) change constantly; past days rarely do. */
-export function ttlForRange(endDateExclusive: string): number {
-  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
-  return endDateExclusive > today ? 5 * 60_000 : 24 * 60 * 60_000;
-}

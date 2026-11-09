@@ -3,6 +3,28 @@
 Personal local web app: dashboards for Google Health data (fitness, sleep, nutrition, body) plus
 food logging written back to Google Health. Single user (the owner). See README.md for setup.
 
+## Session handoff (start here)
+
+**State as of 2026-11-08:**
+- The app works locally (`npm run dev`, then http://localhost:5173) with the redesign, customizable Today page,
+  inline goal editing, sleep benchmarks, food logging, and Open Food Facts.
+- **Browser-only migration** (`docs/browser-migration-plan.md`) was approved with the recommended options:
+  Google Drive app-data settings sync, GitHub Pages with a public repo, keep the local server until phase 6.
+  **Phase 1 (core extraction) is done:** all logic is in `core/`, and the server is a thin host via
+  `server/platform.ts`.
+- **Next: phase 2**, the browser platform: GIS sign-in, IndexedDB cache and queue, Drive app-data settings with
+  a local fallback. Not started (the owner asked to stop after phase 1).
+- **Tests:** `npm test` (170 unit) and `npm run test:e2e` (15 browser). The owner prefers that tests aren't run
+  unless asked; running them when adding or changing tests is expected.
+- **Before committing:** run `npm run check:privacy`, `npm run typecheck`, and `npm run build`.
+- **Possibly pending:** the history rewrite was committed locally, but the force-push needs the owner to run
+  `git push --force-with-lease=main:28d4e58 origin main` (auto mode blocks it). If `git log origin/main` still
+  shows `28d4e58`, it hasn't been pushed yet.
+
+**Owner's local state (not in the repo):** `~/.health_tracker/` holds `.env` (client id and secret),
+`token.enc`/`token.key`, `cache.db`, `app.db` (their goals, layout, favorites, retry queue) and
+`private-patterns.txt`. Their real goals are saved in app.db, so changing the defaults doesn't affect them.
+
 ## Repo layout & policies
 
 - This is its **own git repo**, nested inside `project-vibes/`. The parent ignores it via
@@ -12,9 +34,32 @@ food logging written back to Google Health. Single user (the owner). See README.
 - Only `server/googleHealth.ts` talks to `health.googleapis.com`. Keep all API shape mapping
   there, since the API is new (launched 2026-03-24) and still changing.
 
+## Privacy rules (hard requirement)
+
+- **Run `npm run check:privacy` before every commit and push.** It scans tracked + untracked files for the
+  private literals in `~/.health_tracker/private-patterns.txt` (outside the repo) plus the real client id/secret
+  from `.env`. A clean run is required; if it fails, remove the value (never add it to an allow-list in the repo).
+  No git hook is installed by choice: the check is a documented step.
+- Never commit personal data: no real health values, food names from a real log, emails, Google Health user
+  ids, OAuth client ids/secrets, or screenshots. Tests and fixtures use synthetic values only; default goals are
+  generic published references.
+- Commits must use the GitHub noreply identity (repo-local `git config user.email` is set to it). Check
+  `git config user.email` before committing in a new clone.
+- History was rewritten on 2026-11-08 to remove a commit whose tests contained real health values (see below).
+
 ## Stack
 
-- `server/`: Node + Hono (`@hono/node-server`), run with `tsx`. Binds 127.0.0.1.
+- `core/` (phase 1 of docs/browser-migration-plan.md): all business logic, host-independent. Gets network,
+  tokens, cache, settings and the retry queue from `core/platform.ts` (`configurePlatform`). Never imports
+  `server/`, `node:*`, or reads `process.env` (enforced by `tests/unit/core.test.ts`).
+  - `healthClient.ts` (Google Health API), `dataService.ts` (cached reads + TTL), `summary.ts`, `food.ts`
+    (library, day log, recents, create/update/delete, retry queue), `openFoodFacts.ts`, `goals.ts`, `layout.ts`,
+    `favorites.ts` (stored as one settings entry), `errors.ts`.
+- `server/platform.ts`: the server's `Platform` (SQLite cache, app.db settings + pending queue per signed-in
+  user, token file, client id). Imported by `server/app.ts`; also migrates the old favorites table once.
+
+
+- `server/`: Node + Hono (`@hono/node-server`), run with `tsx`. Binds 127.0.0.1. Now a thin host for `core/`.
   - `config.ts`: env from `~/.health_tracker/.env`, paths, `REDIRECT_URI`
   - `tokenStore.ts`: AES-256-GCM encrypted token file
   - `oauth.ts`: auth URL (state + PKCE), code exchange, on-demand refresh, revoke
@@ -41,6 +86,7 @@ food logging written back to Google Health. Single user (the owner). See README.
     are below 3:1, so every chart keeps a table view.
   - `food/`: FoodView (day log + trends; `?date=YYYY-MM-DD#food` deep link) and AddFood (Recent / My foods /
     Quick add panel, also used for edits).
+  - `ui/`: icons, status Pill. `viz/` adds MiniTrend (overview cards), Ring, RangeBar, SleepTimeline (hypnogram).
   - `dashboard/`: DashboardShell (one filter row: range, units, refresh), Today/Fitness/Sleep/Body views.
     Tabs are linkable (`#sleep`). Units, range and tab are per-browser localStorage conveniences.
 - `shared/types.ts`: types used by both. `shared/dataTypes.ts`: data type registry (id, union field, filter kind, scope, rollup limits).
@@ -95,6 +141,62 @@ food logging written back to Google Health. Single user (the owner). See README.
     matching the label against the food's `servings`.
   - Write scope only allows changing data this OAuth client wrote: `dataSource.application.googleWebClientId`
     equals our client ID. Entries from Fitbit etc. are shown read-only.
+
+## Design system (2026-11-08)
+
+Direction: reference screenshots kept locally in `samples/` (gitignored: they contain personal data).
+Adapted, not copied: no Google branding.
+- Tokens in `src/styles.css` (chrome) and `src/viz/viz.css` (charts). Dark is primary; light follows the OS.
+  Radius by hierarchy: 28 cards · 20 tiles · 14 inputs · pills round. No shadows. Figtree font.
+- Category tones (UI identity only): activity aqua, sleep lavender, heart green, food blue, body amber.
+  Status pills (good/warn/info) are reserved and always carry text.
+- Chart palettes were validated with the dataviz `validate_palette.js` against #1f2125 / #ffffff:
+  sleep stages stacked deep violet · REM aqua · light blue · awake pink (violet next to blue FAILS);
+  macros carbs blue · fat pink · protein gold; intensity (AZM zones, active minutes) = ordinal blue ramp.
+  Sample-style pastel blues/cyans failed the checks: deliberately not used.
+- Period model `src/dashboard/period.ts`: D/W/M/3M with ‹ › and back-to-today; weeks are Mon–Sun. No "Y"
+  (a year needs ~27 heart-rate rollup requests, so cold loads would take close to a minute). Today tab = always D.
+- "Typical range" = the owner's own last 30 days, mean ± 1 SD (`baseline.ts`), never population norms.
+  Macro "On target" uses a ±10% display tolerance (FoodView), documented as such.
+- Goals live in app.db (`server/goals.ts`, Account page). Google's API exposes none. Defaults are generic and
+  sourced (FDA Daily Values, Fitbit default targets); never derive defaults or test data from a real account.
+- Sleep D night card (`NightDetail` + `sleepStages.ts`): chips switch Timeline / Compared with usual /
+  30-day average, after the owner's benchmarks screenshot. Stage share = minutes ÷ time in bed. "Usual" is the
+  owner's last 30 nights (the sample says "people like you"; the API has no population data). Pills: Typical =
+  good; Higher/Lower than usual = neutral (the sample colors all green, but status green is reserved for good,
+  and more REM / less deep isn't inherently good).
+- Today page is customizable: `shared/layout.ts` (22 card ids incl. `stepsRing`; "today" = 12 SLOTS, the ring
+  uses 3 (`slotSize`); "week" = 12 cards; layout v2 added the ring as a card, v1 layouts get it prepended),
+  defaults, validation shared with the server), `server/layout.ts` (app.db, per user; stale ids cleaned on read),
+  `src/dashboard/cards.tsx` (registry: tile + week renderers, availability = any data in last 30 days),
+  `CardBoard.tsx` (Customize mode: drag/drop + ‹ › + ×, picker; edits are a draft until Done).
+  Today grid: container query on `.today-wrap`: 4 columns ≥760px board width (4 × 3), else 2 (2 × 6); rows 96px;
+  `grid-auto-flow: row dense`; the ring card spans 3 rows. Fitness (D) keeps its own square ring (`.day-hero`).
+- Goals are editable inline (`src/ui/GoalEditor.tsx`) wherever a goal is shown; all dashboard views share one
+  goals source (`goalsContext.tsx`, provided by DashboardShell), so an edit updates every chart immediately.
+  Mini trend cards are buttons, so they get no inline editor (no nested buttons); edit from the tab instead.
+- Sidebar collapses to icons (wide screens; `health-tracker:rail-collapsed` in localStorage).
+- Grid items containing charts must size their column from the card (`minmax(0, 1fr)`), never from the SVG:
+  an auto column sized to the chart made charts keep stale widths after a window resize.
+- Pill-shaped bars (from the samples) instead of the dataviz 4px data-end; goal lines with check badges.
+- `useWidth` uses a callback ref: charts swap between empty state and plot, and a once-only effect left
+  some charts at width 0.
+
+## Tests
+
+- `npm test` = Vitest unit suite (`tests/unit/*.test.ts`); `npm run test:e2e` = Playwright (`tests/e2e/`,
+  Chrome channel, Vite on 5174, all `/api` mocked in-browser via `tests/e2e/mockApi.ts`).
+- `tests/setup.ts` sets `HEALTH_TRACKER_HOME` to a fresh temp dir per test file BEFORE server modules load
+  (config.ts reads env at import). Never point tests at `~/.health_tracker`.
+- `tests/helpers/fakeGoogle.ts` replaces `fetch` with a strict router: unmatched requests throw.
+  Fixtures are synthetic but shaped like live responses; never commit real health data.
+- `server/app.ts` holds routes/guards; `server/index.ts` only binds the port and starts the retry timer,
+  so tests can call `app.request()`.
+- Pure UI logic lives in `.ts` modules (`src/food/offMath.ts`, `src/dashboard/sleep.ts`, `src/viz/scale.ts`,
+  `src/units.ts`) so it's testable without React.
+- Mutation-checked 2026-11-08: breaking the snake_case filter prefix, the create-before-delete order for
+  quick-add edits, or the retry queue's already-written check each fails the suite.
+- Owner preference (project memory): don't run test suites unless asked.
 
 ## Phases
 

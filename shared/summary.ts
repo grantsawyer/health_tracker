@@ -35,6 +35,8 @@ export interface SleepSession {
   minutesInBed: number;
   /** Minutes per stage. CLASSIC sleep (no stages) reports only asleep/awake/restless. */
   stages: { deep: number; light: number; rem: number; awake: number; asleep: number; restless: number };
+  /** Stage timeline in minutes from the session start (empty if Google sent no stages). */
+  segments: { stage: "deep" | "light" | "rem" | "awake" | "asleep" | "restless"; from: number; to: number }[];
   device?: string;
 }
 

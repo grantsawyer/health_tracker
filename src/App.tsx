@@ -3,21 +3,28 @@ import { api } from "./api";
 import { DataExplorer } from "./DataExplorer";
 import { SetupWizard } from "./SetupWizard";
 import { DashboardShell } from "./dashboard/DashboardShell";
+import { Preferences } from "./Preferences";
+import { Icon } from "./ui/icons";
 import type { StatusResponse } from "../shared/types";
 
-const TABS = [
-  { id: "today", label: "Today" },
-  { id: "fitness", label: "Fitness" },
-  { id: "sleep", label: "Sleep" },
-  { id: "food", label: "Food" },
-  { id: "body", label: "Body" },
-  { id: "explorer", label: "Data explorer" },
-  { id: "connection", label: "Account" },
+const DASH_TABS = [
+  { id: "today", label: "Today", icon: Icon.today },
+  { id: "fitness", label: "Fitness", icon: Icon.fitness },
+  { id: "sleep", label: "Sleep", icon: Icon.sleep },
+  { id: "food", label: "Food", icon: Icon.food },
+  { id: "body", label: "Body", icon: Icon.body },
 ] as const;
+const OTHER_TABS = [
+  { id: "explorer", label: "Data explorer", icon: Icon.data },
+  { id: "connection", label: "Account", icon: Icon.account },
+] as const;
+const TABS = [...DASH_TABS, ...OTHER_TABS];
 type Tab = (typeof TABS)[number]["id"];
-export type DashboardTab = Extract<Tab, "today" | "fitness" | "sleep" | "food" | "body">;
+export type DashboardTab = (typeof DASH_TABS)[number]["id"];
+const isDashTab = (t: Tab): t is DashboardTab => DASH_TABS.some((d) => d.id === t);
 
 const TAB_KEY = "health-tracker:tab";
+const RAIL_KEY = "health-tracker:rail-collapsed";
 const initialTab = (): Tab => {
   const hash = window.location.hash.slice(1);
   if (TABS.some((x) => x.id === hash)) return hash as Tab;
@@ -34,6 +41,21 @@ export function App() {
   const [tab, setTabState] = useState<Tab>(initialTab);
   const [showSetup, setShowSetup] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [collapsed, setCollapsedState] = useState(() => {
+    try {
+      return localStorage.getItem(RAIL_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setCollapsed = (c: boolean) => {
+    setCollapsedState(c);
+    try {
+      localStorage.setItem(RAIL_KEY, c ? "1" : "0");
+    } catch {
+      /* not persisted */
+    }
+  };
   const [authError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("auth_error");
@@ -41,15 +63,16 @@ export function App() {
     return err;
   });
 
-  const setTab = (t: Tab) => {
+  const setTab = useCallback((t: Tab) => {
     setTabState(t);
-    window.history.replaceState(null, "", `#${t}`);
+    window.history.replaceState(null, "", `${window.location.search}#${t}`);
     try {
       localStorage.setItem(TAB_KEY, t);
     } catch {
       /* not persisted */
     }
-  };
+    window.scrollTo({ top: 0 });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
@@ -71,66 +94,67 @@ export function App() {
 
   const connected = status?.state === "connected";
   const activeTab: Tab = connected ? tab : "connection";
-  const isDashboard = activeTab === "today" || activeTab === "fitness" || activeTab === "sleep" || activeTab === "food" || activeTab === "body";
+  const navButton = (t: (typeof TABS)[number]) => (
+    <button key={t.id} className="nav-btn" onClick={() => setTab(t.id)} aria-current={activeTab === t.id ? "page" : undefined}
+      title={collapsed ? t.label : undefined} aria-label={t.label}>
+      <t.icon /><span>{t.label}</span>
+    </button>
+  );
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <h1>Health Tracker</h1>
+    <div className={`shell ${collapsed ? "rail-collapsed" : ""}`}>
+      <aside className="rail">
+        <div className="brand"><span className="brand-mark"><Icon.heart /></span><span>Health Tracker</span></div>
         {connected && (
-          <nav className="tabs" aria-label="Sections">
-            {TABS.map((t) => (
-              <button key={t.id} className={activeTab === t.id ? "tab active" : "tab"} onClick={() => setTab(t.id)}
-                aria-current={activeTab === t.id ? "page" : undefined}>
-                {t.label}
-              </button>
-            ))}
+          <nav className="nav" aria-label="Sections">
+            {DASH_TABS.map(navButton)}
+            <div className="nav-sep" role="separator" />
+            {OTHER_TABS.map(navButton)}
           </nav>
         )}
-      </header>
+        <button className="nav-btn rail-toggle" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          {collapsed ? <Icon.chevronRight /> : <Icon.chevronLeft />}<span>Collapse</span>
+        </button>
+      </aside>
 
-      {isDashboard ? (
-        <main className="content">
-          <DashboardShell tab={activeTab as DashboardTab} onReauth={refresh} />
-        </main>
-      ) : activeTab === "explorer" ? (
-        <main className="content">
+      <main className="main">
+        {isDashTab(activeTab) ? (
+          <DashboardShell tab={activeTab} onReauth={refresh} onNavigate={setTab} />
+        ) : activeTab === "explorer" ? (
           <DataExplorer />
-        </main>
-      ) : (
-      <main className="content">
-        {authError && (
-          <div className="banner banner-error" role="alert">
-            Sign-in failed: {describeAuthError(authError)}
-          </div>
-        )}
-        {loadError && (
-          <div className="banner banner-error" role="alert">
-            Couldn't reach the local server. Is <code>npm run dev</code> running? <span className="muted">({loadError})</span>
-          </div>
-        )}
-        {!status && !loadError && <p className="muted">Checking connection…</p>}
-        {status && (status.state === "not_configured" || showSetup) ? (
-          <SetupWizard
-            onSaved={() => {
-              setShowSetup(false);
-              void refresh();
-            }}
-            onCancel={status.state === "not_configured" ? undefined : () => setShowSetup(false)}
-          />
         ) : (
-          status && (
-            <ConnectionCard
-              status={status}
-              onLogin={api.login}
-              onLogout={logout}
-              onRetry={refresh}
-              onSetup={() => setShowSetup(true)}
-            />
-          )
+          <div className="account">
+            {authError && (
+              <div className="banner banner-error" role="alert">
+                Sign-in failed: {describeAuthError(authError)}
+              </div>
+            )}
+            {loadError && (
+              <div className="banner banner-error" role="alert">
+                Couldn't reach the local server. Is <code>npm run dev</code> running? <span className="muted">({loadError})</span>
+              </div>
+            )}
+            {!status && !loadError && <p className="muted">Checking connection…</p>}
+            {status && (status.state === "not_configured" || showSetup) ? (
+              <SetupWizard
+                onSaved={() => {
+                  setShowSetup(false);
+                  void refresh();
+                }}
+                onCancel={status.state === "not_configured" ? undefined : () => setShowSetup(false)}
+              />
+            ) : (
+              status && (
+                <>
+                  {connected && <Preferences />}
+                  <ConnectionCard status={status} onLogin={api.login} onLogout={logout} onRetry={refresh} onSetup={() => setShowSetup(true)} />
+                </>
+              )
+            )}
+          </div>
         )}
       </main>
-      )}
     </div>
   );
 }

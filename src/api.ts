@@ -1,6 +1,8 @@
 import type { SetupInfo, StatusResponse } from "../shared/types";
 import type { DataTypeInfo } from "../shared/dataTypes";
 import type { SummaryResponse } from "../shared/summary";
+import type { Goals } from "../shared/goals";
+import type { TodayLayout } from "../shared/layout";
 import type { CreateResult, FavoriteFood, FoodLogDay, FoodLogEntry, FoodTemplate, LibraryFood, NewFoodLogEntry, OffProduct, PendingFoodWrite, RecentFood } from "../shared/food";
 
 export class ApiError extends Error {
@@ -60,6 +62,13 @@ export const api = {
   rollup: (type: string, q: RangeQuery) => request<RollupResponse>(`/api/data/${encodeURIComponent(type)}/rollup?${qs(q)}`),
 
   summary: (q: { start: string; end: string; fresh?: boolean }) => request<SummaryResponse>(`/api/summary?${qs(q)}`),
+
+  goals: () => request<Goals>("/api/goals"),
+  saveGoals: (g: Partial<Goals>) => request<Goals>("/api/goals", { method: "POST", body: JSON.stringify(g) }),
+
+  layout: () => request<TodayLayout>("/api/layout"),
+  saveLayout: (l: TodayLayout) => request<TodayLayout>("/api/layout", { method: "POST", body: JSON.stringify(l) }),
+  resetLayout: () => request<TodayLayout>("/api/layout/reset", { method: "POST" }),
 
   food: {
     day: (date: string, fresh = false) => request<FoodLogDay>(`/api/food/day?${new URLSearchParams({ date, ...(fresh ? { fresh: "1" } : {}) })}`),

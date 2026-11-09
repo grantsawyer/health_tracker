@@ -1,42 +1,26 @@
-import { getAccessToken, ReauthRequiredError } from "./oauth.js";
-import { loadTokens, saveTokens } from "./tokenStore.js";
+import { AccountNotLinkedError, HealthApiError, ReauthRequiredError } from "./errors.js";
+import { platform } from "./platform.js";
 import type { DataTypeInfo } from "../shared/dataTypes.js";
+
+export { AccountNotLinkedError, HealthApiError } from "./errors.js";
 
 /**
  * Thin client for the Google Health API (v4). Every Google call goes through
- * `healthFetch` so token refresh and error mapping live in one place.
- * Phase 2 adds dataPoints list / dailyRollUp / create / patch / delete here.
+ * `healthFetch` so token handling and error mapping live in one place. Tokens
+ * and network access come from the host via core/platform.
  */
 const BASE_URL = "https://health.googleapis.com/v4";
 
-export class AccountNotLinkedError extends Error {
-  constructor() {
-    super("This Google account isn't linked to Google Health yet. Open the Google Health app on your phone, sign in, then retry.");
-  }
-}
-
-export class HealthApiError extends Error {
-  constructor(public status: number, public body: unknown, message: string) {
-    super(message);
-  }
-}
-
-/** Force the next getAccessToken() to refresh (used after an unexpected 401). */
-function expireAccessToken(): void {
-  const t = loadTokens();
-  if (t) saveTokens({ ...t, accessTokenExpiresAt: 0 });
-}
-
 export async function healthFetch<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
-  const token = await getAccessToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const token = await platform().getAccessToken();
+  const res = await platform().fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
 
   if (res.status === 401) {
     if (!retried) {
-      expireAccessToken();
+      await platform().invalidateAccessToken();
       return healthFetch<T>(path, init, true);
     }
     throw new ReauthRequiredError("Google rejected the access token");

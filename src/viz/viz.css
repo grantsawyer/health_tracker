@@ -1,100 +1,261 @@
 /*
- * Chart tokens: dataviz reference palette (validated with validate_palette.js,
- * slots 1–4, light + dark: ALL CHECKS PASS; light slots 3–4 sit below 3:1, so every
- * chart ships a table view). Charts reference roles, never raw hex.
+ * Chart tokens. Charts reference roles, never raw hex.
+ *
+ * Validated with the dataviz validate_palette.js against the card surfaces
+ * (dark #1f2125, light #ffffff), 2026-11-08, ALL CHECKS PASS in both modes:
+ *   sleep stages, stacked in this order: deep violet · REM aqua · light blue · awake pink
+ *     (violet next to blue fails, so REM sits between them)
+ *   macros: carbs blue · fat pink · protein gold
+ *   general series 1–4: the reference order blue · orange · aqua · yellow
+ * Light-mode aqua/pink/gold sit below 3:1 on white, so every chart keeps a table view.
+ * Intensity scales (AZM zones, active-minute levels) use an ordinal one-hue ramp instead.
  */
 .viz {
-  --viz-surface: #fcfcfb;
-  --viz-ink: #0b0b0b;
-  --viz-ink-2: #52514e;
-  --viz-muted: #898781;
-  --viz-grid: #e1e0d9;
-  --viz-axis: #c3c2b7;
-  --viz-ring: rgba(11, 11, 11, 0.10);
-  --series-1: #2a78d6; /* blue */
-  --series-2: #eb6834; /* orange */
-  --series-3: #1baf7a; /* aqua */
-  --series-4: #eda100; /* yellow */
-  /* ordinal blue ramp (light: no lighter than step 250) */
-  --ord-1: #86b6ef;
-  --ord-2: #2a78d6;
-  --ord-3: #104281;
+  --viz-surface: var(--surface);
+  --viz-ink: var(--text);
+  --viz-ink-2: var(--muted);
+  --viz-muted: #8c9199;
+  --viz-grid: #2e3136;
+  --viz-axis: #3d4147;
+  --viz-ring: transparent;
+  --viz-track: #2a2d32;
+  --viz-band: rgba(126, 226, 155, 0.13);
+  --viz-band-edge: rgba(126, 226, 155, 0.35);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+
+  --stage-deep: #9085e9;
+  --stage-rem: #199e70;
+  --stage-light: #3987e5;
+  --stage-awake: #d55181;
+
+  --macro-carbs: #3987e5;
+  --macro-fat: #d55181;
+  --macro-protein: #c98500;
+
+  /* ordinal ramp, low → high intensity (dark: no darker than step 600) */
+  --ord-1: #184f95;
+  --ord-2: #3987e5;
+  --ord-3: #9ec5f4;
+
+  --activity-mark: var(--activity);
+  --goal-line: var(--activity);
 }
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   .viz {
-    --viz-surface: #1a1a19;
-    --viz-ink: #f0efec;
-    --viz-ink-2: #c3c2b7;
     --viz-muted: #898781;
-    --viz-grid: #2c2c2a;
-    --viz-axis: #383835;
-    --viz-ring: rgba(255, 255, 255, 0.10);
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    /* ordinal blue ramp (dark: no darker than step 600) */
-    --ord-1: #184f95;
-    --ord-2: #3987e5;
-    --ord-3: #9ec5f4;
+    --viz-grid: #e6e8ec;
+    --viz-axis: #c9cdd3;
+    --viz-track: #eceff3;
+    --viz-band: rgba(30, 142, 62, 0.10);
+    --viz-band-edge: rgba(30, 142, 62, 0.35);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --stage-deep: #6250d6;
+    --stage-rem: #1baf7a;
+    --stage-light: #2a78d6;
+    --stage-awake: #e87ba4;
+    --macro-carbs: #2a78d6;
+    --macro-fat: #e87ba4;
+    --macro-protein: #eda100;
+    --ord-1: #86b6ef;
+    --ord-2: #2a78d6;
+    --ord-3: #104281;
   }
 }
 
-.viz-card {
-  background: var(--viz-surface);
-  border: 1px solid var(--viz-ring);
-  border-radius: 12px;
-  padding: 16px 18px 12px;
-  min-width: 0;
-  color: var(--viz-ink);
-}
+/* ── Chart card ── */
+.viz-card { background: var(--viz-surface); border-radius: var(--r-xl); padding: 20px 22px 14px; min-width: 0; color: var(--viz-ink); }
 .viz-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.viz-card-title { font-size: 15px; font-weight: 600; margin: 0; }
-.viz-card-sub { font-size: 13px; color: var(--viz-ink-2); margin: 2px 0 0; }
-.viz-toggle {
-  font-size: 12px; padding: 3px 8px; border-radius: 6px; flex: none;
-  border: 1px solid var(--viz-ring); background: none; color: var(--viz-ink-2);
-}
-.viz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 0 2px; font-size: 12.5px; color: var(--viz-ink-2); }
-.viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.viz-card-title { font-size: 17px; font-weight: 600; margin: 0; }
+.viz-card-sub { font-size: 13.5px; color: var(--viz-ink-2); margin: 2px 0 0; }
+.viz-card-value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 0; line-height: 1.15; }
+.viz-card-value small { font-size: 16px; font-weight: 500; color: var(--viz-ink-2); margin-left: 4px; }
+.viz-toggle { font-size: 12.5px; padding: 4px 11px; flex: none; border: none; background: var(--surface-2); color: var(--viz-ink-2); }
+.viz-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 2px; font-size: 13px; color: var(--viz-ink-2); }
+.viz-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .viz-key-rect { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .viz-key-line { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+.viz-key-band { width: 14px; height: 10px; border-radius: 2px; display: inline-block; background: var(--viz-band); outline: 1px dashed var(--viz-band-edge); }
 
-.viz-plot { position: relative; margin-top: 8px; }
+.viz-plot { position: relative; margin-top: 10px; }
 .viz-plot svg { display: block; overflow: visible; }
-.viz-plot text { fill: var(--viz-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.viz-plot .viz-label { fill: var(--viz-ink-2); font-size: 11.5px; font-weight: 600; }
+.viz-plot svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+.viz-plot text { fill: var(--viz-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; font-family: var(--font); }
+.viz-plot .viz-label { fill: var(--viz-ink); font-size: 12px; font-weight: 600; }
+.viz-plot .viz-day-today { fill: var(--viz-ink); font-weight: 700; }
 .viz-grid line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .viz-baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
+.viz-goal { stroke: var(--goal-line); stroke-width: 1.5; opacity: .8; }
 .viz-hit { fill: transparent; cursor: default; outline: none; }
-.viz-col-hover { fill: var(--viz-ink); opacity: 0.05; }
+.viz-col-hover { fill: var(--viz-ink); opacity: 0.06; }
 .viz-cross { stroke: var(--viz-muted); stroke-width: 1; shape-rendering: crispEdges; }
-.viz-empty { color: var(--viz-muted); font-size: 13px; padding: 28px 0; text-align: center; }
+.viz-empty { color: var(--viz-muted); font-size: 13.5px; padding: 28px 0; text-align: center; }
 .viz-loading { opacity: 0.5; transition: opacity .15s; }
 
 .viz-tip {
   position: absolute; pointer-events: none; z-index: 5;
-  background: var(--viz-surface); border: 1px solid var(--viz-ring); border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 8px 10px; font-size: 12.5px; min-width: 120px; white-space: nowrap;
+  background: var(--surface-3); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  padding: 9px 12px; font-size: 13px; min-width: 120px; white-space: nowrap; color: var(--viz-ink);
 }
 .viz-tip-head { color: var(--viz-ink-2); margin-bottom: 4px; }
 .viz-tip-row { display: flex; align-items: center; gap: 8px; }
 .viz-tip-row strong { color: var(--viz-ink); font-weight: 600; }
 .viz-tip-row span { color: var(--viz-ink-2); }
 
-.viz-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-.viz-table th, .viz-table td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--viz-grid); font-variant-numeric: tabular-nums; }
+.viz-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+.viz-table th, .viz-table td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 .viz-table th:first-child, .viz-table td:first-child { text-align: left; }
 .viz-table th { color: var(--viz-ink-2); font-weight: 600; }
-.viz-table-wrap { max-height: 320px; overflow: auto; }
+.viz-table-wrap { max-height: 340px; overflow: auto; }
 
-/* Stat tiles */
-.viz-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 12px; }
-.viz-tile { background: var(--viz-surface); border: 1px solid var(--viz-ring); border-radius: 12px; padding: 14px 16px; color: var(--viz-ink); min-width: 0; }
-.viz-tile-label { font-size: 13px; color: var(--viz-ink-2); }
-.viz-tile-value { font-size: 26px; font-weight: 600; margin-top: 2px; line-height: 1.2; }
-.viz-tile-unit { font-size: 14px; font-weight: 500; color: var(--viz-ink-2); margin-left: 4px; }
-.viz-tile-delta { font-size: 12.5px; color: var(--viz-ink-2); margin-top: 2px; }
-.viz-tile-spark { margin-top: 8px; }
-.viz-hero .viz-tile-value { font-size: 48px; }
+/* ── Mini trend cards (overview grid) ── */
+.mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 14px; }
+.mini-card {
+  display: grid; gap: 2px; align-content: start; text-align: left; width: 100%;
+  background: var(--viz-surface); border: none; border-radius: var(--r-xl); padding: 18px 20px 16px; color: var(--viz-ink);
+}
+button.mini-card:hover { background: var(--surface-2); }
+.mini-title { font-size: 15px; font-weight: 500; color: var(--viz-ink-2); }
+.mini-value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.mini-value small { font-size: 15px; font-weight: 500; color: var(--viz-ink-2); margin-left: 3px; }
+.mini-chart { margin: 10px 0 8px; }
+.mini-chart svg { display: block; overflow: visible; }
+.mini-chart text { fill: var(--viz-muted); font-size: 11.5px; font-family: var(--font); }
+.mini-chart .viz-day-today { fill: var(--viz-ink); font-weight: 700; }
+.mini-foot { display: flex; }
+
+/* ── Today grid ──
+ * 12 slots: 4 columns × 3 rows when the board is ≥760px wide, else 2 × 6. Rows are
+ * fixed height; the steps ring spans three rows. Dense packing fills the gaps, so a
+ * narrow column holds the ring plus three cards. A container query (not the
+ * viewport) decides the columns, so collapsing the sidebar counts too. */
+.today-wrap { container-type: inline-size; --tile-h: 96px; --gap: 12px; }
+.today-grid {
+  display: grid; gap: var(--gap); grid-auto-flow: row dense;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: var(--tile-h);
+}
+@container (min-width: 760px) { .today-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.today-grid > .board-item { min-width: 0; height: 100%; }
+.today-grid > .span-3 { grid-row: span 3; }
+.today-grid .board-add { min-height: 0; height: 100%; }
+.ring-card {
+  position: relative; height: 100%; width: 100%; box-sizing: border-box;
+  background: var(--viz-surface); border-radius: var(--r-xl); display: grid; place-items: center; padding: 14px;
+}
+.ring-card svg { width: 100%; height: 100%; }
+.ring-goal-edit { position: absolute; top: 10px; right: 10px; }
+.board-editing .ring-goal-edit { display: none; }
+.ring-value { fill: var(--viz-ink); font-size: 44px; font-weight: 600; font-family: var(--font); letter-spacing: -0.02em; }
+.ring-label { fill: var(--viz-ink-2); font-size: 15px; font-weight: 600; font-family: var(--font); }
+.ring-goal { fill: var(--activity); font-size: 14px; font-weight: 600; font-family: var(--font); }
+.tile {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; text-align: left;
+  border: none; border-radius: var(--r-lg); padding: 12px 16px; height: 100%; width: 100%;
+  background: var(--tone-bg); color: var(--tone-ink);
+}
+.tile::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--fill, 0%); background: var(--tone); opacity: .22; pointer-events: none; }
+button.tile:hover { filter: brightness(1.08); }
+.tile-icon { position: relative; flex: none; width: 38px; height: 54px; border-radius: 999px; display: grid; place-items: center; background: color-mix(in srgb, var(--tone-bg) 70%, black); color: var(--tone); }
+.tile-icon svg { width: 20px; height: 20px; }
+.tile-text { position: relative; display: grid; min-width: 0; }
+.tile-label { font-size: 14px; font-weight: 500; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-sub { font-size: 13px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tone-activity { --tone: var(--activity); --tone-bg: var(--activity-bg); --tone-ink: var(--activity-ink); }
+.tone-sleep { --tone: var(--sleep); --tone-bg: var(--sleep-bg); --tone-ink: var(--sleep-ink); }
+.tone-heart { --tone: var(--heart); --tone-bg: var(--heart-bg); --tone-ink: var(--heart-ink); }
+.tone-food { --tone: var(--food); --tone-bg: var(--food-bg); --tone-ink: var(--food-ink); }
+.tone-body { --tone: var(--body); --tone-bg: var(--body-bg); --tone-ink: var(--body-ink); }
+.quick-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.quick-actions button { padding: 11px 22px; }
+
+/* Mini cards: the column is sized by the card, never by the chart inside it.
+ * (An auto column sized to the SVG made a feedback loop: charts kept their old
+ * width after a window resize until reload.) */
+.mini-card { grid-template-columns: minmax(0, 1fr); min-width: 0; height: 100%; }
+.mini-chart { min-width: 0; width: 100%; }
+.mini-grid > .board-item { min-width: 0; display: grid; }
+
+/* ── Customize mode ── */
+.board-item.editing { position: relative; cursor: grab; border-radius: var(--r-lg); outline: 2px dashed var(--surface-3); outline-offset: 3px; }
+.mini-grid .board-item.editing { border-radius: var(--r-xl); }
+.board-item.editing.dragging { opacity: .4; }
+.board-item.editing.drop-target { outline-color: var(--accent); }
+.board-card { pointer-events: none; height: 100%; display: grid; }
+.board-tools {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 4px;
+  background: var(--surface-3); border-radius: 999px; padding: 3px 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+}
+.board-handle { color: var(--muted); padding: 0 4px 0 6px; font-size: 14px; cursor: grab; }
+.board-btn { width: 28px; height: 28px; padding: 0; display: inline-grid; place-items: center; border: none; background: none; font-size: 18px; line-height: 1; }
+.board-btn svg { width: 16px; height: 16px; }
+.board-btn:hover { background: var(--surface-2); }
+.board-remove:hover { color: var(--error); }
+.board-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: var(--tile-h, 96px);
+  border: 2px dashed var(--surface-3); background: none; border-radius: var(--r-lg); color: var(--accent); font-weight: 600;
+}
+.mini-grid .board-add { border-radius: var(--r-xl); min-height: 200px; }
+.board-add:hover { background: var(--surface); }
+.board-add-count { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.picker { display: grid; gap: 10px; }
+.picker-group h3 { margin: 6px 0 8px; }
+.picker-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 8px; }
+.picker-option {
+  display: flex; align-items: center; gap: 12px; text-align: left; border: none; border-radius: var(--r-md);
+  padding: 8px 12px; background: var(--tone-bg); color: var(--tone-ink);
+}
+.picker-option:hover { filter: brightness(1.1); background: var(--tone-bg); }
+.picker-option .tile-icon { width: 30px; height: 40px; }
+.picker-text { display: grid; flex: 1; min-width: 0; font-weight: 600; color: var(--text); }
+.picker-note { font-size: 12px; font-weight: 500; color: var(--tone-ink); opacity: .8; }
+
+/* ── Range bars (value vs goal / typical range) ── */
+.ranges { display: grid; gap: 10px; }
+.range-row { background: var(--viz-surface); border-radius: var(--r-lg); padding: 14px 18px 16px; }
+.ranges.flat .range-row { background: none; padding: 6px 0; }
+.range-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 15px; }
+.range-head b { font-weight: 600; }
+.range-track { position: relative; height: 22px; border-radius: 999px; background: var(--viz-track); }
+.range-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; min-width: 22px; }
+.range-target { position: absolute; top: -4px; bottom: -4px; border: 1.5px dashed var(--viz-muted); border-radius: 999px; background: rgba(255,255,255,0.04); }
+.range-knob { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--viz-surface); }
+.range-note { font-size: 13px; color: var(--viz-ink-2); margin: 4px 2px 0; display: flex; align-items: center; gap: 8px; }
+
+/* ── Sleep stage timeline (hypnogram) ── */
+.hypno text { fill: var(--viz-ink); font-size: 14px; font-family: var(--font); }
+.hypno .hypno-lane-label tspan.v { font-weight: 600; }
+.hypno .hypno-axis { fill: var(--viz-ink-2); font-size: 12.5px; }
+.hypno .hypno-axis-strong { fill: var(--viz-ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.hypno-track { fill: var(--viz-track); }
+.hypno-link { stroke: var(--viz-muted); stroke-width: 1; opacity: .45; }
+
+.viz-card-head > div:first-child { flex: 1; min-width: 0; }
+
+/* ── Night card (Sleep, D) ── */
+.night-card { display: grid; gap: 14px; }
+.night-view { min-height: 120px; }
+.stage-bars { gap: 16px; }
+.stage-bars .range-head { font-size: 16px; }
+.stage-bars .range-track { height: 24px; }
+.range-target { pointer-events: none; }
+.range-key { width: 22px; height: 12px; border-radius: 999px; display: inline-block; border: 1.5px dashed var(--viz-muted); }
+.night-chips { padding-top: 2px; }
+/* Controls float on the card's top edge so they never cover its label; rows open up to make room. */
+.board-editing { row-gap: 30px; padding-top: 16px; }
+.board-item.editing .board-tools { top: -17px; right: 14px; }
+.viz-card-actions, .range-actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Fitness (D): a square steps ring beside the day's goal bars. */
+.day-hero { display: grid; grid-template-columns: minmax(0, 312px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.day-hero .ring-card { aspect-ratio: 1 / 1; height: auto; }
+@media (max-width: 760px) {
+  .day-hero { grid-template-columns: minmax(0, 1fr); }
+  .day-hero .ring-card { width: min(312px, 100%); }
+}

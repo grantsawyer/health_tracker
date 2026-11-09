@@ -1,10 +1,12 @@
 import { Hono, type Context } from "hono";
 import { cacheInvalidateType } from "./cache.js";
-import { getPoints, getRollup } from "./dataService.js";
-import { buildSummary } from "./summary.js";
-import { OffError, productByBarcode, searchFoods } from "./openFoodFacts.js";
-import { getFavorites, removeFavorite, saveFavorite } from "./favorites.js";
-import { FoodInputError, NotEditableError, createEntry, discardPendingWrite, listPendingWrites, retryAllPending, deleteEntry, getDay, getFood, getMyFoods, getRecents, getUnits, parseEntry, updateEntry } from "./food.js";
+import { getPoints, getRollup } from "../core/dataService.js";
+import { buildSummary } from "../core/summary.js";
+import { OffError, productByBarcode, searchFoods } from "../core/openFoodFacts.js";
+import { getFavorites, removeFavorite, saveFavorite } from "../core/favorites.js";
+import { getGoals, updateGoals } from "../core/goals.js";
+import { getLayout, resetLayout, saveLayout } from "../core/layout.js";
+import { FoodInputError, NotEditableError, createEntry, discardPendingWrite, listPendingWrites, retryAllPending, deleteEntry, getDay, getFood, getMyFoods, getRecents, getUnits, parseEntry, updateEntry } from "../core/food.js";
 import {
   AccountNotLinkedError,
   HealthApiError,
@@ -13,7 +15,7 @@ import {
   batchDeleteDataPoints,
   createDataPoint,
   isDataPointName,
-} from "./googleHealth.js";
+} from "../core/healthClient.js";
 import { ReauthRequiredError, fullScope } from "./oauth.js";
 import { loadTokens } from "./tokenStore.js";
 import { DATA_TYPES, MEAL_TYPES, dataTypeById, type DataTypeInfo } from "../shared/dataTypes.js";
@@ -148,6 +150,15 @@ dataRoutes.post("/food/entries/delete", route(async (c) => {
   await deleteEntry(b.id);
   return { ok: true };
 }));
+
+// Goals (local, app.db; Google's API has none)
+dataRoutes.get("/goals", route(async () => getGoals()));
+dataRoutes.post("/goals", route(async (c) => updateGoals(await jsonBody(c))));
+
+// Today page card layout (local, app.db)
+dataRoutes.get("/layout", route(async () => getLayout()));
+dataRoutes.post("/layout", route(async (c) => saveLayout(await jsonBody(c))));
+dataRoutes.post("/layout/reset", route(async () => resetLayout()));
 
 // Favorites (local, app.db)
 dataRoutes.get("/food/favorites", route(async () => getFavorites()));

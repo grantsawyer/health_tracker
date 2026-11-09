@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { EmptyState, Tooltip } from "./ChartCard";
+import { dayLabel } from "../dashboard/period";
 import { axisFormat, fmtLongDate, fmtShortDate, labelIndices, linear, niceTicks, useWidth } from "./scale";
 
 export interface LineRow {
@@ -25,8 +26,14 @@ export function LineChart(props: {
   height?: number;
   connectGaps?: boolean;
   bandLabel?: string;
+  /** The owner's typical range, drawn as a tinted horizontal band. */
+  typical?: { lo: number; hi: number };
+  /** A second series on the same axis (e.g. 7-day average), aligned with rows. */
+  secondary?: { label: string; values: (number | undefined)[]; color: string };
+  /** Highlights this date's axis label. */
+  today?: string;
 }) {
-  const { rows, label, color, format, height = 180, connectGaps = false, bandLabel } = props;
+  const { rows, label, color, format, height = 200, connectGaps = false, bandLabel, typical, secondary, today } = props;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
@@ -35,15 +42,18 @@ export function LineChart(props: {
 
   const innerW = Math.max(0, width - M.left - M.right);
   const innerH = height - M.top - M.bottom;
-  const lo = Math.min(...withValue.map((r) => r.min ?? r.value!));
-  const hi = Math.max(...withValue.map((r) => r.max ?? r.value!));
+  const extra = [...(typical ? [typical.lo, typical.hi] : []), ...(secondary?.values.filter((v): v is number => v !== undefined) ?? [])];
+  const lo = Math.min(...withValue.map((r) => r.min ?? r.value!), ...extra);
+  const hi = Math.max(...withValue.map((r) => r.max ?? r.value!), ...extra);
   const pad = (hi - lo) * 0.1 || Math.max(1, Math.abs(hi) * 0.02);
   const ticks = niceTicks(lo - pad, hi + pad, 4);
   const y = linear(ticks[0]!, ticks[ticks.length - 1]!, innerH, 0);
   const band = rows.length ? innerW / rows.length : 0;
   const x = (i: number) => i * band + band / 2;
   const fmtTick = axisFormat(ticks);
-  const labels = labelIndices(rows.length, Math.floor(innerW / 64));
+  const labels = rows.length <= 7 ? new Set(rows.map((_, i) => i)) : labelIndices(rows.length, Math.floor(innerW / 64));
+  const dateLabel = (d: string) => (rows.length <= 7 ? dayLabel(d, rows.length) : fmtShortDate(d));
+  const secPts = secondary?.values.map((v, i) => (v === undefined ? null : `${x(i)},${y(v)}`)).filter((q): q is string => q !== null) ?? [];
 
   // Build path segments (break on gaps unless connectGaps).
   const segments: { i: number; v: number }[][] = [];
@@ -96,7 +106,9 @@ export function LineChart(props: {
               {ticks.map((t) => <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} />)}
             </g>
             {ticks.map((t) => <text key={t} x={-8} y={y(t)} dy="0.32em" textAnchor="end">{fmtTick(t)}</text>)}
+            {typical && <rect x={0} y={y(typical.hi)} width={innerW} height={Math.max(2, y(typical.lo) - y(typical.hi))} rx={6} fill="var(--viz-band)" />}
             {bandPath && <path d={bandPath} fill={color} opacity={0.1} />}
+            {secPts.length > 1 && <path d={`M${secPts.join("L")}`} fill="none" stroke={secondary!.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
             {segments.map((s, k) =>
               s.length > 1 ? (
                 <path key={k} d={linePath(s)} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
@@ -110,7 +122,7 @@ export function LineChart(props: {
             )}
             <text className="viz-label" x={x(last.i) + 8} y={y(last.value!)} dy="0.32em">{format(last.value!)}</text>
             {rows.map((r, i) =>
-              labels.has(i) ? <text key={r.date} x={x(i)} y={innerH + 15} textAnchor="middle">{fmtShortDate(r.date)}</text> : null,
+              labels.has(i) ? <text key={r.date} x={x(i)} y={innerH + 16} textAnchor="middle" className={r.date === today ? "viz-day-today" : undefined}>{dateLabel(r.date)}</text> : null,
             )}
             <rect className="viz-hit" x={0} y={0} width={innerW} height={innerH} onMouseMove={onMove} />
           </g>
@@ -125,6 +137,7 @@ export function LineChart(props: {
           rows={[
             { label, value: a.value === undefined ? "—" : format(a.value), color },
             ...(a.min !== undefined && a.max !== undefined ? [{ label: bandLabel ?? "Range", value: `${format(a.min)} – ${format(a.max)}` }] : []),
+            ...(secondary && secondary.values[active] !== undefined ? [{ label: secondary.label, value: format(secondary.values[active]!), color: secondary.color }] : []),
           ]}
         />
       )}

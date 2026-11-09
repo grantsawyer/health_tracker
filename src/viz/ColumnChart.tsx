@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { EmptyState, Tooltip } from "./ChartCard";
 import { axisFormat, fmtLongDate, fmtShortDate, labelIndices, linear, niceTicks, useWidth } from "./scale";
+import { dayLabel } from "../dashboard/period";
 
 export interface ColumnSeries {
   label: string;
@@ -15,13 +16,16 @@ export interface ColumnRow {
 
 const M = { top: 18, right: 8, bottom: 22, left: 44 };
 const GAP = 2; // surface gap between touching marks
-const MAX_BAR = 24;
-const RADIUS = 4;
+const MAX_BAR = 30;
 
-/** Rect with only the top corners rounded (data-end rounded, square at the baseline). */
-function topRoundedRect(x: number, y: number, w: number, h: number, r: number): string {
-  const rr = Math.min(r, w / 2, h);
-  return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
+/**
+ * Rect with independently rounded top and bottom corners. Columns are pill
+ * shaped (the design direction from the owner's reference screenshots): the
+ * stack's top segment rounds its top, the bottom segment its bottom.
+ */
+function roundedRect(x: number, y: number, w: number, h: number, rTop: number, rBottom: number): string {
+  const t = Math.min(rTop, w / 2, h / 2), b = Math.min(rBottom, w / 2, h / 2);
+  return `M${x},${y + t}Q${x},${y} ${x + t},${y}H${x + w - t}Q${x + w},${y} ${x + w},${y + t}V${y + h - b}Q${x + w},${y + h} ${x + w - b},${y + h}H${x + b}Q${x},${y + h} ${x},${y + h - b}Z`;
 }
 
 /**
@@ -34,12 +38,14 @@ export function ColumnChart(props: {
   series: ColumnSeries[];
   format: (v: number) => string;
   height?: number;
-  /** Optional reference line (e.g. a goal), drawn as a hairline with a label. */
-  reference?: { value: number; label: string };
+  /** Optional goal line; with `badges`, columns at or above it get a check badge. */
+  reference?: { value: number; label: string; badges?: boolean };
   /** Override y-axis tick labels (e.g. append a unit). */
   tickFormat?: (v: number) => string;
+  /** Highlights this date's axis label. */
+  today?: string;
 }) {
-  const { rows, series, format, height = 180, reference, tickFormat } = props;
+  const { rows, series, format, height = 200, reference, tickFormat, today } = props;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
@@ -56,7 +62,8 @@ export function ColumnChart(props: {
 
   const band = rows.length ? innerW / rows.length : 0;
   const barW = Math.max(1, Math.min(MAX_BAR, band * 0.66, band - GAP));
-  const labels = labelIndices(rows.length, Math.floor(innerW / 64));
+  const labels = rows.length <= 7 ? new Set(rows.map((_, i) => i)) : labelIndices(rows.length, Math.floor(innerW / 64));
+  const label = (d: string) => (rows.length <= 7 ? dayLabel(d, rows.length) : fmtShortDate(d));
 
   // Label the latest column that has data (selective direct label).
   let lastIdx = -1;
@@ -98,6 +105,9 @@ export function ColumnChart(props: {
               const x = i * band + (band - barW) / 2;
               let base = innerH;
               const topIdx = r.values.reduce((t, v, j) => (v ? j : t), -1);
+              const bottomIdx = r.values.findIndex((v) => Boolean(v));
+              const round = barW / 2;
+              const met = reference?.badges && totals[i]! >= reference.value;
               return (
                 <g key={r.date}>
                   {r.values.map((v, j) => {
@@ -108,19 +118,21 @@ export function ColumnChart(props: {
                     const yTop = base - gap - segH;
                     base = yTop;
                     if (segH <= 0) return null;
-                    return j === topIdx ? (
-                      <path key={j} d={topRoundedRect(x, yTop, barW, segH, RADIUS)} fill={series[j]!.color} />
-                    ) : (
-                      <rect key={j} x={x} y={yTop} width={barW} height={segH} fill={series[j]!.color} />
-                    );
+                    return <path key={j} d={roundedRect(x, yTop, barW, segH, j === topIdx ? round : 0, j === bottomIdx ? round : 0)} fill={series[j]!.color} />;
                   })}
+                  {met && barW >= 16 && (
+                    <g transform={`translate(${x + barW / 2},${y(totals[i]!) + barW / 2})`} aria-hidden>
+                      <circle r={barW / 2 - 3} fill="var(--viz-surface)" opacity={0.9} />
+                      <path d="M-4.5 0.5l3 3 6-6.5" fill="none" stroke={series[series.length - 1]!.color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  )}
                 </g>
               );
             })}
             {reference && (
               <g>
-                <line className="viz-baseline" x1={0} x2={innerW} y1={y(reference.value)} y2={y(reference.value)} />
-                <text x={innerW} y={y(reference.value) - 4} textAnchor="end">{reference.label}</text>
+                <line className="viz-goal" x1={0} x2={innerW} y1={y(reference.value)} y2={y(reference.value)} />
+                <text x={innerW} y={y(reference.value) - 5} textAnchor="end">{reference.label}</text>
               </g>
             )}
             <line className="viz-baseline" x1={0} x2={innerW} y1={innerH} y2={innerH} />
@@ -131,7 +143,7 @@ export function ColumnChart(props: {
             )}
             {rows.map((r, i) =>
               labels.has(i) ? (
-                <text key={r.date} x={i * band + band / 2} y={innerH + 15} textAnchor="middle">{fmtShortDate(r.date)}</text>
+                <text key={r.date} x={i * band + band / 2} y={innerH + 16} textAnchor="middle" className={r.date === today ? "viz-day-today" : undefined}>{label(r.date)}</text>
               ) : null,
             )}
             {rows.map((r, i) => (

@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
+import { Pill, type Status } from "../ui/Pill";
 
 export interface LegendItem {
   label: string;
   color: string;
-  shape: "rect" | "line";
+  shape: "rect" | "line" | "band";
 }
 
 export interface TableSpec {
@@ -19,6 +20,12 @@ export interface TableSpec {
 export function ChartCard(props: {
   title: string;
   subtitle?: string;
+  /** Headline value under the title, e.g. "6h 06m" (with optional small unit). */
+  value?: string;
+  unit?: string;
+  status?: Status;
+  /** Inline goal editor (or any small control) shown in the header. */
+  goal?: ReactNode;
   legend?: LegendItem[];
   table: TableSpec;
   loading?: boolean;
@@ -30,17 +37,22 @@ export function ChartCard(props: {
       <div className="viz-card-head">
         <div>
           <h3 className="viz-card-title">{props.title}</h3>
+          {props.value && <p className="viz-card-value">{props.value}{props.unit && <small>{props.unit}</small>}</p>}
           {props.subtitle && <p className="viz-card-sub">{props.subtitle}</p>}
+        </div>
+        <div className="viz-card-actions">
+          {props.status && <Pill tone={props.status.tone}>{props.status.text}</Pill>}
+          {props.goal}
         </div>
         <button className="viz-toggle" onClick={() => setShowTable((s) => !s)} aria-pressed={showTable}>
           {showTable ? "Chart" : "Table"}
         </button>
       </div>
-      {props.legend && props.legend.length >= 2 && !showTable && (
+      {props.legend && (props.legend.length >= 2 || props.legend.some((l) => l.shape === "band")) && !showTable && (
         <div className="viz-legend">
           {props.legend.map((l) => (
             <span key={l.label}>
-              <i className={l.shape === "rect" ? "viz-key-rect" : "viz-key-line"} style={{ background: l.color }} />
+              <i className={l.shape === "rect" ? "viz-key-rect" : l.shape === "band" ? "viz-key-band" : "viz-key-line"} style={l.shape === "band" ? undefined : { background: l.color }} />
               {l.label}
             </span>
           ))}

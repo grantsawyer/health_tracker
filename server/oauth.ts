@@ -1,37 +1,19 @@
 import { createHash, randomBytes } from "node:crypto";
 import { REDIRECT_URI, credentials } from "./config.js";
 import { loadTokens, saveTokens, type StoredTokens } from "./tokenStore.js";
-import type { ScopeKey } from "../shared/types.js";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
-const SCOPE_PREFIX = "https://www.googleapis.com/auth/googlehealth.";
-
-/** Google Health scopes this app requests. Write scopes do NOT grant read access. */
-export const HEALTH_SCOPES: { key: ScopeKey; label: string }[] = [
-  { key: "activity_and_fitness.readonly", label: "Read activity & fitness" },
-  { key: "sleep.readonly", label: "Read sleep" },
-  { key: "nutrition.readonly", label: "Read nutrition" },
-  { key: "nutrition.writeonly", label: "Log food (write nutrition)" },
-  { key: "health_metrics_and_measurements.readonly", label: "Read health metrics (weight, heart rate…)" },
-  { key: "profile.readonly", label: "Read profile" },
-];
-
-export const fullScope = (key: ScopeKey) => SCOPE_PREFIX + key;
-
-/** openid + email only so the UI can show which Google account is connected. */
-export const REQUESTED_SCOPES = ["openid", "email", ...HEALTH_SCOPES.map((s) => fullScope(s.key))];
+export { HEALTH_SCOPES, REQUESTED_SCOPES, fullScope } from "../shared/scopes.js";
+import { REQUESTED_SCOPES } from "../shared/scopes.js";
 
 /** Refresh this long before actual expiry to avoid racing it. */
 const EXPIRY_SKEW_MS = 60_000;
 
-export class ReauthRequiredError extends Error {
-  constructor(message = "Google sign-in expired or was revoked") {
-    super(message);
-  }
-}
+export { ReauthRequiredError } from "../core/errors.js";
+import { ReauthRequiredError } from "../core/errors.js";
 
 // ── PKCE + state ──────────────────────────────────────────────────────────────
 // Single-user local app: pending logins are kept in memory, keyed by `state`.

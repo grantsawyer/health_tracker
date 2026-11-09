@@ -28,3 +28,10 @@ dist/
 
 # macOS
 .DS_Store
+
+# Test output
+test-results/
+playwright-report/
+
+# Reference screenshots from the Google Health app: personal health data, never commit
+samples/
