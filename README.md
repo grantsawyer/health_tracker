@@ -54,6 +54,31 @@ The steps, for reference:
 > Settings sync needs a second, separate Google sign-in for Drive (Account → **Connect Google Drive**):
 > Google Health rejects tokens that carry any other scope, so the two can't share one.
 
+## Sharing it with other people
+
+Each person signs in with their own Google account and sees only their own data. Their cached data lives in
+their browser, and their goals, layout and favorites in their own Google Drive. Nothing passes through you.
+
+**Let people use your copy (up to 100 people).** While your OAuth app is in Testing mode, Google only lets listed
+test users sign in:
+
+1. Google Cloud console → **Google Auth Platform → Audience** → under **Test users**, click **Add users** and
+   enter their Google email.
+2. Send them the app's address. If they get "Access blocked" or "has not completed the Google verification
+   process", they aren't on the list yet.
+3. Each person must have signed in to the **Google Health** phone app once, or they'll see "account not linked".
+
+All test users share your Cloud project's API quota, which is plenty for a small group. Opening it to anyone
+requires Google's verification (privacy policy, verified domain, review). That's out of scope for this project.
+
+**Run your own copy.** Anyone can use their own Google Cloud project instead of yours: open the app, choose
+**Change Google credentials** on the Account page (or the first-run setup), and follow the steps with your own
+client ID. It's saved in that browser only. To host your own build, set `VITE_GOOGLE_CLIENT_ID` when building, and
+add the hosting address under **Authorized JavaScript origins**.
+
+**On a shared computer**, use **Account → Forget this device** instead of Sign out. It also removes the
+browser's copy of your settings and any food entries that haven't reached Google Health yet (it warns first).
+
 ## Running
 
 ```sh

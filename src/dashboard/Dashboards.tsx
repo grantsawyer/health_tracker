@@ -19,11 +19,14 @@ import { ScheduleGoalEditor } from "../ui/ScheduleGoalEditor";
 import { SCHEDULE_TOLERANCE_MIN } from "../../shared/goals";
 import { compareStages, efficiencyPct, efficiencySentence } from "./sleepStages";
 import { INTERRUPTION_MIN, qualityRows } from "./sleepQuality";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CardBoard } from "./CardBoard";
 import { metricById, type MetricDef } from "./cards";
 import { useLayout } from "./useLayout";
 import { GoalEditor } from "../ui/GoalEditor";
+import { useGoalsContext } from "./goalsContext";
+import { api } from "../api";
+import type { SettingsSyncInfo } from "../../shared/types";
 import { LAYOUT_LIMITS, type TodayLayout } from "../../shared/layout";
 
 export type { Tab, ViewCtx } from "./ctx";
@@ -52,6 +55,60 @@ function Tile(p: { tone: string; icon: () => React.JSX.Element; label: string; v
  * remove and reorder cards from the registry in cards.tsx; the layout is
  * saved per user (app.db).
  */
+/**
+ * First run: until the user saves goals, the app runs on generic published targets (shared/goals.ts). Say so on
+ * Today, with a way to adjust them or keep them (either saves, which hides the card).
+ *
+ * If Drive sync is paused (a new browser that hasn't connected Drive yet), the user's goals may already be in Drive.
+ * Saving defaults here would make them the newest copy and overwrite the real goals on the next sync, so the card
+ * offers "Connect Google Drive" instead and reloads goals once settings arrive.
+ */
+function FirstRunGoals({ ctx }: { ctx: ViewCtx }) {
+  const { goals, saved, save, reload } = useGoalsContext();
+  const [busy, setBusy] = useState(false);
+  const [sync, setSync] = useState<SettingsSyncInfo | null>(null);
+  useEffect(() => {
+    if (saved) return;
+    void api.settingsSync().then(setSync);
+    return api.watchSettingsSync(setSync);
+  }, [saved]);
+  if (saved || !sync) return null;
+  if (sync.state === "paused") {
+    return (
+      <section className="card card-wide first-run" aria-labelledby="first-run-h">
+        <h2 id="first-run-h">Bring your goals here</h2>
+        <p>
+          If you've used Health Tracker in another browser, your goals, Today layout and favorites are saved in your
+          Google Drive. Connect Drive to load them. New here? Connect anyway, and you'll be offered starting goals.
+        </p>
+        <div className="actions">
+          <button className="primary" disabled={busy} onClick={() => {
+            // Called straight from the click: Drive sign-in opens Google's pop-up.
+            setBusy(true);
+            api.connectDrive().then(() => reload()).finally(() => setBusy(false));
+          }}>{busy ? "Connecting…" : "Connect Google Drive"}</button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="card card-wide first-run" aria-labelledby="first-run-h">
+      <h2 id="first-run-h">Set your goals</h2>
+      <p>
+        Health Tracker starts with general targets, not yours: {fmtInt(goals.steps)} steps, {fmtInt(goals.caloriesEaten)} kcal
+        eaten, {goals.carbsG} g carbs, {goals.fatG} g fat and {goals.proteinG} g protein a day (FDA Daily Values and Fitbit's
+        default targets). Rings, goal lines and status labels use them.
+      </p>
+      <div className="actions">
+        <button className="primary" onClick={ctx.openAccount}>Adjust goals</button>
+        <button disabled={busy} onClick={async () => { setBusy(true); try { await save({ steps: goals.steps }); } finally { setBusy(false); } }}>
+          {busy ? "Saving…" : "Keep these"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function TodayView(ctx: ViewCtx) {
   const { goals } = ctx;
   const day = focusDay(ctx);
@@ -93,6 +150,7 @@ export function TodayView(ctx: ViewCtx) {
 
   return (
     <div className="dash">
+      <FirstRunGoals ctx={ctx} />
       <section className="today-wrap" aria-label="The day at a glance">
         <CardBoard section="today" className="today-grid" ids={shown.today} limit={LAYOUT_LIMITS.today} editing={editing} ctx={ctx}
           defs={metricById} render={(def) => (def.id === "stepsRing" ? ring : tile(def))} onChange={(today) => setDraft({ ...shown, today })} />

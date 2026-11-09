@@ -32,7 +32,8 @@ export interface RangeQuery {
 /** Everything the UI asks of the backend. Implemented by api.browser.ts (default) and api.server.ts. */
 export interface Api {
   status(): Promise<StatusResponse>;
-  logout(): Promise<{ ok: true }>;
+  /** `forgetDevice` (browser mode) also removes this browser's settings copy and unsent food entries. */
+  logout(opts?: { forgetDevice?: boolean }): Promise<{ ok: true }>;
   /**
    * Browser mode: opens Google's sign-in pop-up and resolves once signed in. It must be called directly from a
    * click handler. Server mode: navigates to the server's OAuth flow (never resolves).
@@ -48,6 +49,8 @@ export interface Api {
   summary(q: { start: string; end: string; fresh?: boolean }): Promise<SummaryResponse>;
 
   goals(): Promise<Goals>;
+  /** False until the user saves goals (the app then shows a "Set your goals" card). */
+  goalsSaved(): Promise<boolean>;
   saveGoals(g: Partial<Goals>): Promise<Goals>;
   layout(): Promise<TodayLayout>;
   saveLayout(l: TodayLayout): Promise<TodayLayout>;

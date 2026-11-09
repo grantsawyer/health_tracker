@@ -21,6 +21,8 @@ export interface ViewCtx {
   units: UnitSystem;
   loading: boolean;
   open: (tab: Tab) => void;
+  /** Go to the Account page (goals form, settings). */
+  openAccount: () => void;
   logFood: () => void;
 }
 

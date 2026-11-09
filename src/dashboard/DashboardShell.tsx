@@ -35,13 +35,13 @@ function initialPeriod(): Period {
  * ‹ › and back-to-today) scoping everything below it, one summary fetch for the
  * displayed range plus a 30-day baseline for "your typical range", and goals.
  */
-type ShellProps = { tab: Tab; onReauth: () => void; onNavigate: (t: Tab) => void };
+type ShellProps = { tab: Tab; onReauth: () => void; onNavigate: (t: Tab) => void; onAccount: () => void };
 
 export function DashboardShell(props: ShellProps) {
   return <GoalsProvider><Shell {...props} /></GoalsProvider>;
 }
 
-function Shell({ tab, onReauth, onNavigate }: ShellProps) {
+function Shell({ tab, onReauth, onNavigate, onAccount }: ShellProps) {
   const [chosen, setChosen] = useState<Period>(initialPeriod);
   const [units] = useUnits();
   const { goals } = useGoalsContext();
@@ -84,7 +84,7 @@ function Shell({ tab, onReauth, onNavigate }: ShellProps) {
   const ctx: ViewCtx | null = main.data
     ? {
         period, today, dates: displayDates(period), data: main.data, baseline: baseline.data, goals, units,
-        loading: main.loading, open: onNavigate,
+        loading: main.loading, open: onNavigate, openAccount: onAccount,
         logFood: () => { setAutoOpenAdd(true); onNavigate("food"); },
       }
     : null;

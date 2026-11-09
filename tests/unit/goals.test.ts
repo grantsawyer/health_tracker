@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getGoals, updateGoals } from "../../core/goals.js";
+import { getGoals, goalsSaved, updateGoals } from "../../core/goals.js";
 import { FoodInputError } from "../../core/errors.js";
 import { DEFAULT_GOALS } from "../../shared/goals.js";
 import { signIn } from "../helpers/fixtures.js";
@@ -13,6 +13,14 @@ describe("goals", () => {
     expect((await getGoals()).steps).toBe(10000);
     expect((await updateGoals({ sleepMinutes: null })).sleepMinutes).toBeNull();
     expect((await updateGoals({ exerciseDaysPerWeek: 4.6 })).exerciseDaysPerWeek).toBe(5);
+  });
+  it("reports whether goals were ever saved (first run runs on the defaults)", async () => {
+    signIn(undefined, "first-run@example.com");
+    expect(await goalsSaved()).toBe(false);
+    await getGoals(); // reading doesn't save
+    expect(await goalsSaved()).toBe(false);
+    await updateGoals({ steps: 10000 });
+    expect(await goalsSaved()).toBe(true);
   });
   it("bedtime and wake time are optional clock times (midnight allowed, clearable)", async () => {
     signIn(undefined, "clock@example.com");

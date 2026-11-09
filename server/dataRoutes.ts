@@ -3,7 +3,7 @@ import { getPoints, getRollup } from "../core/dataService.js";
 import { buildSummary } from "../core/summary.js";
 import { OffError, productByBarcode, searchFoods } from "../core/openFoodFacts.js";
 import { getFavorites, removeFavorite, saveFavorite } from "../core/favorites.js";
-import { getGoals, updateGoals } from "../core/goals.js";
+import { getGoals, goalsSaved, updateGoals } from "../core/goals.js";
 import { getLayout, resetLayout, saveLayout } from "../core/layout.js";
 import { FoodInputError, NotEditableError, createEntry, discardPendingWrite, listPendingWrites, retryAllPending, deleteEntry, getDay, getEntries, getFood, getMyFoods, getRecents, getUnits, parseEntry, updateEntry } from "../core/food.js";
 import { AccountNotLinkedError, HealthApiError } from "../core/healthClient.js";
@@ -105,6 +105,7 @@ dataRoutes.post("/food/entries/delete", route(async (c) => {
 
 // Goals, Today layout and favorites (app settings; Google's API has no goals)
 dataRoutes.get("/goals", route(async () => getGoals()));
+dataRoutes.get("/goals/saved", route(async () => ({ saved: await goalsSaved() })));
 dataRoutes.post("/goals", route(async (c) => updateGoals(await jsonBody(c))));
 dataRoutes.get("/layout", route(async () => getLayout()));
 dataRoutes.post("/layout", route(async (c) => saveLayout(await jsonBody(c))));

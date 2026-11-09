@@ -5,7 +5,7 @@ import { getFavorites, removeFavorite, saveFavorite } from "../core/favorites";
 import {
   createEntry, deleteEntry, discardPendingWrite, getDay, getEntries, getFood, getMyFoods, getRecents, listPendingWrites, parseEntry, retryAllPending, updateEntry,
 } from "../core/food";
-import { getGoals, updateGoals } from "../core/goals";
+import { getGoals, goalsSaved, updateGoals } from "../core/goals";
 import { getIdentity } from "../core/healthClient";
 import { getLayout, resetLayout, saveLayout } from "../core/layout";
 import { productByBarcode, searchFoods } from "../core/openFoodFacts";
@@ -90,9 +90,9 @@ async function status(): Promise<StatusResponse> {
 export const browserApi: Api = {
   status,
 
-  async logout() {
+  async logout(opts = {}) {
     const rt = await runtime();
-    await rt.bp?.signOut();
+    await rt.bp?.signOut(opts);
     return { ok: true };
   },
 
@@ -158,6 +158,7 @@ export const browserApi: Api = {
   }),
 
   goals: () => call(() => getGoals()),
+  goalsSaved: () => call(() => goalsSaved()),
   saveGoals: (g) => call(() => updateGoals(g)),
   layout: () => call(() => getLayout()),
   saveLayout: (l) => call(() => saveLayout(l)),

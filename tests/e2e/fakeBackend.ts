@@ -75,6 +75,8 @@ export interface FakeOptions {
   start?: "signedIn" | "signedOut" | "notConfigured";
   /** Scopes the user grants on the fake consent screens (each token gets only what it asked for). */
   scopes?: string[];
+  /** A brand-new user: no settings file in Drive yet. */
+  driveEmpty?: boolean;
   /** Synthetic main sleep for each of the last N nights (stage timelines that vary night to night). */
   sleepNights?: number;
   /** With start "signedIn": whether this tab already connected Drive (default: yes, if drive.appdata is granted). */
@@ -100,7 +102,15 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
   let seq = 100;
   const requests: FakeRequest[] = [];
   const unmocked: string[] = [];
-  const points = new Map<string, Point>();
+  // Per Google account (like the real APIs): nutrition-log points and the Drive settings file.
+  let account = EMAIL;
+  const pointsByAccount = new Map<string, Map<string, Point>>([[EMAIL, new Map()]]);
+  const pointsOf = () => {
+    if (!pointsByAccount.has(account)) pointsByAccount.set(account, new Map());
+    return pointsByAccount.get(account)!;
+  };
+  const points = pointsOf();
+  const filesByAccount = new Map<string, { id: string; content: string }>();
   const settingsFile = {
     id: "settings-file-1",
     content: JSON.stringify({
@@ -112,7 +122,9 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
         ...(opts.favorites ? { favorites: { value: opts.favorites, updatedAt: 1 } } : {}),
       },
     }),
-  };
+  };  if (!opts.driveEmpty) filesByAccount.set(EMAIL, settingsFile);
+  const fileOf = () => filesByAccount.get(account);
+
   const state = { googleDown: false, driveWrites: 0 };
 
   const ours = { recordingMethod: "UNKNOWN", application: { googleWebClientId: CLIENT_ID }, platform: "GOOGLE_WEB_API" };
@@ -238,13 +250,22 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
     if (!req) return;
     const p = req.url.pathname;
     if (p.startsWith("/drive/") || p.startsWith("/upload/")) driveTokens.add(route.request().headers()["authorization"] ?? "");
-    if (p === "/oauth2/v3/userinfo") return send(route, { email: EMAIL, email_verified: true });
-    if (p === "/drive/v3/files" && req.method === "GET") return send(route, { files: [{ id: settingsFile.id, modifiedTime: new Date().toISOString() }] });
-    if (p === `/drive/v3/files/${settingsFile.id}` && req.url.searchParams.get("alt") === "media") return send(route, settingsFile.content);
-    if (p === `/upload/drive/v3/files/${settingsFile.id}` && req.method === "PATCH") {
-      settingsFile.content = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+    if (p === "/oauth2/v3/userinfo") return send(route, { email: account, email_verified: true });
+    const file = fileOf();
+    if (p === "/drive/v3/files" && req.method === "GET") return send(route, { files: file ? [{ id: file.id, modifiedTime: new Date().toISOString() }] : [] });
+    if (file && p === `/drive/v3/files/${file.id}` && req.url.searchParams.get("alt") === "media") return send(route, file.content);
+    if (file && p === `/upload/drive/v3/files/${file.id}` && req.method === "PATCH") {
+      file.content = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
       state.driveWrites++;
-      return send(route, { id: settingsFile.id });
+      return send(route, { id: file.id });
+    }
+    if (!file && p === "/upload/drive/v3/files" && req.method === "POST") {
+      // multipart: metadata part, then the JSON content part
+      const parts = String(req.body).split(/\r\n--[^\r\n]+/).map((x) => x.split("\r\n\r\n")[1]?.trim()).filter(Boolean);
+      const created = { id: `settings-${account.replace(/[^a-z0-9]/gi, "-")}`, content: parts[1] ?? "{}" };
+      filesByAccount.set(account, created);
+      state.driveWrites++;
+      return send(route, { id: created.id });
     }
     return fail(route, req);
   });
@@ -278,7 +299,7 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
       n.serving = { ...n.serving, foodMeasurementUnitDisplayName: "oz" };
     }
     const point = { name: id.replace("users/me/", "users/1234567890/"), dataSource: ours, nutritionLog: n };
-    points.set(id, point);
+    pointsOf().set(id, point);
     return point;
   };
 
@@ -304,17 +325,17 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
       return done(route, asResponse(storeCreate(req.body)));
     }
     if (path === "users/me/dataTypes/nutrition-log/dataPoints:batchDelete" && req.method === "POST") {
-      for (const n of req.body.names as string[]) points.delete(n);
+      for (const n of req.body.names as string[]) pointsOf().delete(n);
       return done(route, {});
     }
     const one = /^(users\/me\/dataTypes\/(nutrition-log|food)\/dataPoints\/[^/]+)$/.exec(path);
     if (one && req.method === "GET") {
       if (one[2] === "food") return one[1] === RICE.name ? send(route, ricePoint()) : send(route, { error: { code: 404, message: "Not found" } }, 404);
-      const p = points.get(one[1]!);
+      const p = pointsOf().get(one[1]!);
       return p ? send(route, p) : send(route, { error: { code: 404, message: "Not found" } }, 404);
     }
     if (one && req.method === "PATCH") {
-      const p = points.get(one[1]!);
+      const p = pointsOf().get(one[1]!);
       if (!p) return send(route, { error: { code: 404, message: "Not found" } }, 404);
       p.nutritionLog = { ...req.body.nutritionLog };
       return done(route, p);
@@ -327,7 +348,7 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
         const filter = req.url.searchParams.get("filter") ?? "";
         const from = /civil_start_time >= "([^"]+)"/.exec(filter)?.[1] ?? "";
         const to = /civil_start_time < "([^"]+)"/.exec(filter)?.[1] ?? "9999";
-        return send(route, { dataPoints: [...points.values()].filter((p) => civilOf(p) >= from && civilOf(p) < to) });
+        return send(route, { dataPoints: [...pointsOf().values()].filter((p) => civilOf(p) >= from && civilOf(p) < to) });
       }
       // My foods: private foods first; a public food ends the private section.
       if (type === "food") return send(route, { dataPoints: [ricePoint("PRIVATE"), ricePoint("PUBLIC", "9001", "Public rice")] });
@@ -351,7 +372,7 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
     return fail(route, req);
   });
 
-  const driveDoc = () => JSON.parse(settingsFile.content) as { entries: Record<string, { value: any }> };
+  const driveDoc = () => JSON.parse(fileOf()?.content ?? '{"entries":{}}') as { entries: Record<string, { value: any }> };
   const fake = {
     requests,
     unmocked,
@@ -370,6 +391,12 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
     /** Local wall-clock start of a nutrition log body. */
     localStart: (n: { interval: { startTime: string; startUtcOffset: string } }) => civilOf({ name: "", nutritionLog: n }),
     points,
+    /** Act as another Google account from now on (its own health data and Drive file). */
+    switchAccount(email: string) {
+      account = email;
+    },
+    /** Settings in a given account's Drive file. */
+    driveOf: (email: string) => JSON.parse(filesByAccount.get(email)?.content ?? '{"entries":{}}') as { entries: Record<string, { value: any }> },
   };
   (page as unknown as { __fake: typeof fake }).__fake = fake;
   return fake;

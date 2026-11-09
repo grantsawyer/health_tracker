@@ -43,6 +43,7 @@ export const serverApi: Api = {
   summary: (q) => request(`/api/summary?${qs(q)}`),
 
   goals: () => request("/api/goals"),
+  goalsSaved: () => request<{ saved: boolean }>("/api/goals/saved").then((r) => r.saved),
   saveGoals: (g) => request("/api/goals", post(g)),
   layout: () => request("/api/layout"),
   saveLayout: (l) => request("/api/layout", post(l)),

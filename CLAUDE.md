@@ -15,7 +15,7 @@ food logging written back to Google Health. Single user (the owner). See README.
   `server/platform.ts`.
 - **Phase 2 (browser platform) is done:** `platform/` holds GIS sign-in, the IndexedDB cache and retry queue, and
   settings in IndexedDB synced to Drive appData.
-- **Phase 3 (switch the seam) is built, awaiting the owner's live test** (2026-11-08). `src/api.ts` picks the
+- **Phase 3 (switch the seam) is done**, confirmed by the owner 2026-11-09 (settings import and food edits work). `src/api.ts` picks the
   browser backend (`api.browser.ts` → core + platform) by default. The setup wizard asks for a client ID and a
   JavaScript origin, sign-in is a GIS pop-up, the Account page has settings export/import plus the Drive sync
   status, and OFF search uses `cgi/search.pl` with `X-User-Agent`. Verified with fakes only; real sign-in needs
@@ -24,8 +24,17 @@ food logging written back to Google Health. Single user (the owner). See README.
   2. enable the Google Drive API and add the `drive.appdata` scope on Data Access;
   3. paste the client ID once in the setup screen;
   4. export settings from server mode and import them in browser mode.
-- **Next: phase 4** (multi-user readiness: generic defaults + first-run goals card, per-user isolation checks,
-  "forget this device", docs for test users). Then phase 5 (Pages, CSP, S6 demo mode, S7 CI history scan).
+- **Phase 4 (multi-user readiness) is built, awaiting a live check with a second test account** (2026-11-09):
+  - **First-run card** on Today until goals are saved (`goalsSaved()` in core; `saved` in the goals context).
+  - **Drive paused:** when Drive sync is paused, the card offers only "Connect Google Drive", never "Keep these".
+    Saving defaults there would become the newest copy and overwrite the real goals in Drive on the next sync.
+  - **Account → Forget this device** (`logout({ forgetDevice })`) warns with the unsent-entry count.
+  - **Isolation test:** the e2e fake keeps data per account (`switchAccount`, `driveOf`).
+  - **README:** "Sharing it with other people".
+- **Next: phase 5** (GitHub Pages deploy, CSP, Pages origin on the OAuth client, S6 demo mode, S7 CI history
+  scan before the repo goes public).
+- **Commit directly to `main`** in this repo (owner's instruction 2026-11-09). Don't create branches; push only
+  when asked.
 - **Scope additions** S1–S9 (from a review of seven similar apps, 2026-11-08) are in the plan's §12: recovery vitals,
   BMR-only energy trimming, `.date` filter fallback, food→sleep connections, incremental sync, demo mode, a CI
   history scan before the repo goes public, client ID in the bundle, raw exercise type. Most land after phase 3.

@@ -2,6 +2,11 @@ import { FoodInputError } from "./errors.js";
 import { platform } from "./platform.js";
 import { CLOCK_GOALS, DEFAULT_GOALS, GOAL_LIMITS, OPTIONAL_GOALS, type Goals } from "../shared/goals.js";
 
+/** Whether the signed-in user has saved goals yet (until then the app runs on the generic defaults). */
+export async function goalsSaved(): Promise<boolean> {
+  return (await platform().settings.get("goals")) !== undefined;
+}
+
 /** Goals for the signed-in user: stored values over defaults (new goal keys pick up defaults). */
 export async function getGoals(): Promise<Goals> {
   return { ...DEFAULT_GOALS, ...((await platform().settings.get<Partial<Goals>>("goals")) ?? {}) };

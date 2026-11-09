@@ -101,6 +101,18 @@ export function App() {
     await refresh();
   };
 
+  // Browser mode: sign out and remove everything this browser keeps for the account (cached data, settings copy,
+  // unsent food entries). Warns with the number of unsent entries first, since those would be lost.
+  const forget = async () => {
+    const pending = await api.food.pending().catch(() => []);
+    const lost = pending.length
+      ? `\n\n${pending.length} food entr${pending.length === 1 ? "y hasn't" : "ies haven't"} reached Google Health yet and will be lost.`
+      : "";
+    if (!window.confirm(`Forget this device?\n\nThis signs you out and removes your cached health data, your settings copy and any unsent food entries from this browser. Your Google Health data and the settings in your Google Drive aren't affected.${lost}`)) return;
+    await api.logout({ forgetDevice: true });
+    await refresh();
+  };
+
   const [signInError, setSignInError] = useState<string | null>(null);
   // Called straight from the click: browser mode opens Google's pop-up, which needs that click.
   const login = () => {
@@ -136,7 +148,7 @@ export function App() {
 
       <main className="main">
         {isDashTab(activeTab) ? (
-          <DashboardShell tab={activeTab} onReauth={refresh} onNavigate={setTab} />
+          <DashboardShell tab={activeTab} onReauth={refresh} onNavigate={setTab} onAccount={() => setTab("connection")} />
         ) : activeTab === "explorer" ? (
           <DataExplorer />
         ) : (
@@ -173,7 +185,7 @@ export function App() {
                 <>
                   {connected && <Preferences />}
                   {connected && <SettingsCard />}
-                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onRetry={refresh} onSetup={() => setShowSetup(true)} />
+                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onForget={backendMode === "browser" ? forget : undefined} onRetry={refresh} onSetup={() => setShowSetup(true)} />
                 </>
               )
             )}
@@ -196,11 +208,13 @@ interface CardProps {
   status: StatusResponse;
   onLogin: () => void;
   onLogout: () => void;
+  /** Browser mode: sign out and clear this browser's copy of the account's data. */
+  onForget?: () => void;
   onRetry: () => void;
   onSetup: () => void;
 }
 
-function ConnectionCard({ status, onLogin, onLogout, onRetry, onSetup }: CardProps) {
+function ConnectionCard({ status, onLogin, onLogout, onForget, onRetry, onSetup }: CardProps) {
   switch (status.state) {
     case "not_configured":
       return null; // handled by SetupWizard
@@ -284,7 +298,14 @@ function ConnectionCard({ status, onLogin, onLogout, onRetry, onSetup }: CardPro
           <ScopeList status={status} />
           <div className="actions">
             <button onClick={onLogout}>Sign out</button>
+            {onForget && <button onClick={onForget}>Forget this device</button>}
           </div>
+          {onForget && (
+            <p className="muted small">
+              Sign out keeps your settings and any unsent food entries in this browser for next time. On a shared
+              computer, use Forget this device.
+            </p>
+          )}
         </section>
       );
   }
