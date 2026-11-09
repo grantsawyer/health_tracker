@@ -15,6 +15,9 @@ export const HEALTH_SCOPES: { key: ScopeKey; label: string }[] = [
 
 export const fullScope = (key: ScopeKey) => SCOPE_PREFIX + key;
 
+/** Shape of a Google OAuth web client ID (they aren't secret; only client secrets are). */
+export const CLIENT_ID_PATTERN = /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+
 /** openid + email only so the UI can show which Google account is connected. */
 export const REQUESTED_SCOPES = ["openid", "email", ...HEALTH_SCOPES.map((s) => fullScope(s.key))];
 

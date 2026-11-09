@@ -25,7 +25,7 @@ export interface MiniTrendProps {
   today?: string;
   status?: Status;
   onOpen?: () => void;
-  /** Accessible summary of the whole card, e.g. "Steps this week". */
+  /** Accessible summary of the whole card, e.g. "Steps, last 7 days". */
   label: string;
 }
 

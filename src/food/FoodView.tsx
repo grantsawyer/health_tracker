@@ -12,6 +12,8 @@ import type { ViewCtx } from "../dashboard/Dashboards";
 import { AddFood, MEAL_LABEL } from "./AddFood";
 import { GoalEditor } from "../ui/GoalEditor";
 import type { FoodLogDay, FoodLogEntry, PendingFoodWrite } from "../../shared/food";
+import { addDaysISO } from "../dashboard/period";
+import { MEALS, METRICS, anyPlacedByTime, byMealByDay, mealAverages, type MealMetric } from "./meals";
 
 const fmtTime = (timeLocal: string) => {
   const [h = 0, m = 0] = timeLocal.slice(11, 16).split(":").map(Number);
@@ -165,108 +167,116 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
         </section>
       )}
 
-      <div className="food-day-head">
-        {isDay ? <MacroSummary day={day} ctx={ctx} /> : <span />}
-        <div className="actions" style={{ marginTop: 0, alignSelf: "start" }}>
-          {isDay && <button onClick={() => loadDay(true)} disabled={dayLoading}>Refresh</button>}
-          <button className="primary" onClick={() => setPanel({})} disabled={Boolean(panel)}><Icon.plus /> Add food</button>
-        </div>
-      </div>
-
-      {panel && (
-        <AddFood
-          key={panel.editing?.id ?? "new"}
-          date={isDay ? date : ctx.today}
-          editing={panel.editing}
-          onDone={async (saved, msg) => {
-            setPanel(null);
-            if (msg) setNotice(msg);
-            if (saved) await afterChange();
-          }}
-        />
-      )}
-
-      {isDay && (
-        <section className={`dash ${dayLoading ? "viz-loading" : ""}`} aria-label="Food log">
-          {error && <p className="error-text" role="alert">{error}</p>}
-          {day && groups.length > 0 && (
-            <div className="meal-chips" role="group" aria-label="Filter by meal">
-              {["ALL", ...groups.map((g) => g.meal)].map((m) => (
-                <button key={m} className="chip" aria-pressed={mealFilter === m} onClick={() => setMealFilter(m)}>
-                  {mealFilter === m && <Icon.check />}{m === "ALL" ? "All" : MEAL_LABEL[m] ?? "Other"}
-                </button>
-              ))}
-            </div>
-          )}
-          {day && !day.entries.length && <p className="muted">Nothing logged {date === ctx.today ? "yet today" : "this day"}. Use Add food to log a meal.</p>}
-          <div className="meals">
-            {shownGroups.map((g) => {
-              const open = !collapsed.has(g.meal);
-              const kcal = g.entries.reduce((t, e) => t + (e.kcal ?? 0), 0);
-              return (
-                <div key={g.meal} className="meal-card meal-group">
-                  <button className="meal-head" aria-expanded={open} onClick={() => toggle(g.meal)}>
-                    <span>
-                      <span className="meal-name">{MEAL_LABEL[g.meal] ?? "Other"}</span><br />
-                      <span className="meal-count">{g.entries.length} item{g.entries.length === 1 ? "" : "s"}</span>
-                    </span>
-                    <span className="meal-kcal">{fmtInt(kcal)}<small> kcal</small></span>
-                    <span className="chev"><Icon.chevronDown /></span>
+      {/* Day view: the log (filter, actions, add panel, meals) first; the summary below it, or beside it on wide screens. */}
+      <div className={isDay ? "food-day" : undefined}>
+        <div className="food-log-col">
+          <div className="food-toolbar">
+            {isDay && day && groups.length > 0 ? (
+              <div className="meal-chips" role="group" aria-label="Filter by meal">
+                {["ALL", ...groups.map((g) => g.meal)].map((m) => (
+                  <button key={m} className="chip" aria-pressed={mealFilter === m} onClick={() => setMealFilter(m)}>
+                    {mealFilter === m && <Icon.check />}{m === "ALL" ? "All" : MEAL_LABEL[m] ?? "Other"}
                   </button>
-                  {open && (
-                    <ul className="entry-list">
-                      {g.entries.map((e) => (
-                        <li key={e.id}>
-                          <span className="entry-time muted">{fmtTime(e.timeLocal)}</span>
-                          <span className="entry-main">
-                            <span className="entry-name">{e.displayName}</span>
-                            <span className="muted entry-detail">
-                              {e.serving ? `${+e.serving.amount.toFixed(2)} ${e.serving.label ?? ""} · ` : ""}
-                              {[e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`, e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`].filter(Boolean).join(" · ")}
-                              {!e.editable && e.source ? ` · via ${e.source}` : ""}
-                            </span>
-                          </span>
-                          <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
-                          <span className="entry-actions">
-                            {e.editable ? (
-                              <>
-                                <button onClick={() => setPanel({ editing: e })} disabled={Boolean(panel) || busyId === e.id}>Edit</button>
-                                <button onClick={() => remove(e)} disabled={busyId === e.id}>{busyId === e.id ? "…" : "Delete"}</button>
-                              </>
-                            ) : (
-                              <span className="muted" title="Logged by another app; edit it there">Read-only</span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ) : <span />}
+            <div className="actions">
+              {isDay && <button onClick={() => loadDay(true)} disabled={dayLoading}>Refresh</button>}
+              <button className="primary" onClick={() => setPanel({})} disabled={Boolean(panel)}><Icon.plus /> Add food</button>
+            </div>
           </div>
-        </section>
-      )}
+
+          {panel && (
+            <AddFood
+              key={panel.editing?.id ?? "new"}
+              date={isDay ? date : ctx.today}
+              editing={panel.editing}
+              onDone={async (saved, msg) => {
+                setPanel(null);
+                if (msg) setNotice(msg);
+                if (saved) await afterChange();
+              }}
+            />
+          )}
+
+          {isDay && (
+            <section className={`dash ${dayLoading ? "viz-loading" : ""}`} aria-label="Food log">
+              {error && <p className="error-text" role="alert">{error}</p>}
+              {day && !day.entries.length && <p className="muted">Nothing logged {date === ctx.today ? "yet today" : "this day"}. Use Add food to log a meal.</p>}
+              <div className="meals">
+                {shownGroups.map((g) => {
+                  const open = !collapsed.has(g.meal);
+                  const kcal = g.entries.reduce((t, e) => t + (e.kcal ?? 0), 0);
+                  return (
+                    <div key={g.meal} className="meal-card meal-group">
+                      <button className="meal-head" aria-expanded={open} onClick={() => toggle(g.meal)}>
+                        <span>
+                          <span className="meal-name">{MEAL_LABEL[g.meal] ?? "Other"}</span><br />
+                          <span className="meal-count">{g.entries.length} item{g.entries.length === 1 ? "" : "s"}</span>
+                        </span>
+                        <span className="meal-kcal">{fmtInt(kcal)}<small> kcal</small></span>
+                        <span className="chev"><Icon.chevronDown /></span>
+                      </button>
+                      {open && (
+                        <ul className="entry-list">
+                          {g.entries.map((e) => (
+                            <li key={e.id}>
+                              <span className="entry-time muted">{fmtTime(e.timeLocal)}</span>
+                              <span className="entry-main">
+                                <span className="entry-name">{e.displayName}</span>
+                                <span className="muted entry-detail">
+                                  {e.serving ? `${+e.serving.amount.toFixed(2)} ${e.serving.label ?? ""} · ` : ""}
+                                  {[e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`, e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`].filter(Boolean).join(" · ")}
+                                  {!e.editable && e.source ? ` · via ${e.source}` : ""}
+                                </span>
+                              </span>
+                              <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
+                              <span className="entry-actions">
+                                {e.editable ? (
+                                  <>
+                                    <button onClick={() => setPanel({ editing: e })} disabled={Boolean(panel) || busyId === e.id}>Edit</button>
+                                    <button onClick={() => remove(e)} disabled={busyId === e.id}>{busyId === e.id ? "…" : "Delete"}</button>
+                                  </>
+                                ) : (
+                                  <span className="muted" title="Logged by another app; edit it there">Read-only</span>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+        {isDay && <MacroSummary day={day} ctx={ctx} />}
+      </div>
 
       <NutritionTrends ctx={ctx} />
     </div>
   );
 }
 
-/** Calories vs budget and each macro vs its goal, with its share of macro calories. */
+/** Calories vs goal and each macro vs its goal, with its share of macro calories. */
 function MacroSummary({ day, ctx }: { day: FoodLogDay | null; ctx: ViewCtx }) {
   const { goals } = ctx;
   const t = day?.totals ?? { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
   const macroKcal = t.carbsG * 4 + t.fatG * 9 + t.proteinG * 4;
   const share = (k: number) => (macroKcal ? `${Math.round((k / macroKcal) * 100)}%` : "0%");
   const burned = ctx.data.days.find((d) => d.date === ctx.period.anchor)?.caloriesOut;
+  // One gram axis for the three macros (owner request 2026-11-09): the same grams sit at the same x on every track,
+  // so goals of different sizes sit at different points. The track ends 15% past the largest goal or intake.
   const rows = [
     { label: "Carbs", key: "carbsG" as const, g: t.carbsG, goal: goals.carbsG, kcal: t.carbsG * 4, color: "var(--macro-carbs)" },
     { label: "Fat", key: "fatG" as const, g: t.fatG, goal: goals.fatG, kcal: t.fatG * 9, color: "var(--macro-fat)" },
     { label: "Protein", key: "proteinG" as const, g: t.proteinG, goal: goals.proteinG, kcal: t.proteinG * 4, color: "var(--macro-protein)" },
   ];
+  const gramAxis = Math.max(1, ...rows.flatMap((r) => [r.goal, r.g])) * 1.15;
   return (
-    <section className="viz-card" style={{ flex: "1 1 520px" }} aria-label="Calories and macros">
+    <section className="viz-card food-summary" aria-label="Calories and macros">
       <div className="viz-card-head">
         <div>
           <h3 className="viz-card-title">Calories eaten</h3>
@@ -275,12 +285,12 @@ function MacroSummary({ day, ctx }: { day: FoodLogDay | null; ctx: ViewCtx }) {
         </div>
       </div>
       <div className="ranges flat" style={{ marginTop: 12 }}>
-        <RangeBar label="Budget" detail={`${fmtInt(t.kcal)} kcal`} value={t.kcal} max={Math.max(goals.caloriesEaten * 1.25, t.kcal)} color="var(--food)"
+        <RangeBar label="Calories" detail={`${fmtInt(t.kcal)} kcal`} value={t.kcal} max={Math.max(goals.caloriesEaten * 1.25, t.kcal)} color="var(--food)"
           target={goals.caloriesEaten} status={budgetStatus(t.kcal, goals.caloriesEaten, " kcal")}
-          action={<GoalEditor goalKey="caloriesEaten" label="Calorie budget" unit=" kcal" />} />
+          action={<GoalEditor goalKey="caloriesEaten" label="Calories" unit=" kcal" />} />
         {rows.map((r) => (
           <RangeBar key={r.label} label={r.label} detail={`${share(r.kcal)} · ${fmtInt(r.g)} of ${fmtInt(r.goal)} g`} value={r.g}
-            max={Math.max(r.goal * 1.6, r.g)} color={r.color} target={r.goal} status={macroStatus(r.g, r.goal)}
+            max={gramAxis} color={r.color} target={r.goal} status={macroStatus(r.g, r.goal)}
             action={<GoalEditor goalKey={r.key} label={r.label} unit=" g" />} />
         ))}
       </div>
@@ -295,6 +305,7 @@ function NutritionTrends({ ctx }: { ctx: ViewCtx }) {
   const shown = ctx.dates.filter((d) => d <= ctx.today);
   const underBudget = logged.filter((d) => d.nutrition!.kcal <= ctx.goals.caloriesEaten).length;
   return (
+    <>
     <div className="dash-grid">
       <ChartCard title="Calories eaten" goal={<GoalEditor goalKey="caloriesEaten" label="Calorie budget" unit=" kcal" />} value={avgIn !== undefined ? fmtInt(avgIn) : dash} unit={avgIn !== undefined ? " kcal a day on average" : undefined}
         subtitle={logged.length ? `Within your ${fmtInt(ctx.goals.caloriesEaten)} kcal budget on ${underBudget} of ${logged.length} logged days` : "No food logged in this period"} loading={ctx.loading}
@@ -308,6 +319,102 @@ function NutritionTrends({ ctx }: { ctx: ViewCtx }) {
         <ColumnChart today={ctx.today} rows={ctx.dates.map((date) => { const n = m.get(date)?.nutrition; return { date, values: [n?.carbsG, n?.fatG, n?.proteinG] }; })}
           series={[{ label: "Carbs", color: "var(--macro-carbs)" }, { label: "Fat", color: "var(--macro-fat)" }, { label: "Protein", color: "var(--macro-protein)" }]} format={(v) => `${fmtInt(v)} g`} />
       </ChartCard>
+      {MACROS.map((mac) => <MacroChart key={mac.key} ctx={ctx} macro={mac} />)}
     </div>
+    <MealCharts ctx={ctx} />
+    </>
+  );
+}
+
+const MACROS = [
+  { key: "carbsG", label: "Carbs", color: "var(--macro-carbs)" },
+  { key: "fatG", label: "Fat", color: "var(--macro-fat)" },
+  { key: "proteinG", label: "Protein", color: "var(--macro-protein)" },
+] as const;
+
+/** One macro per day against its target band (goal ± 10%), in the same form as the Calories eaten chart. */
+function MacroChart({ ctx, macro }: { ctx: ViewCtx; macro: (typeof MACROS)[number] }) {
+  const m = new Map(ctx.data.days.map((d) => [d.date, d]));
+  const goal = ctx.goals[macro.key];
+  const value = (date: string) => m.get(date)?.nutrition?.[macro.key];
+  const logged = ctx.dates.map(value).filter((v): v is number => v !== undefined);
+  const average = logged.length ? logged.reduce((a, b) => a + b, 0) / logged.length : undefined;
+  const onTarget = logged.filter((v) => macroStatus(v, goal).text === "On target").length;
+  const shown = ctx.dates.filter((d) => d <= ctx.today);
+  return (
+    <ChartCard title={macro.label} goal={<GoalEditor goalKey={macro.key} label={macro.label} unit=" g" />}
+      value={average !== undefined ? fmtInt(average) : dash} unit={average !== undefined ? " g a day on average" : undefined}
+      subtitle={logged.length ? `On target (within ${TOLERANCE * 100}% of ${fmtInt(goal)} g) on ${onTarget} of ${logged.length} logged days` : "No food logged in this period"}
+      loading={ctx.loading}
+      table={{ columns: ["Date", `${macro.label} (g)`], rows: shown.map((date) => [fmtShortDate(date), value(date) !== undefined ? fmtInt(value(date)!) : dash]) }}>
+      <ColumnChart today={ctx.today} rows={ctx.dates.map((date) => ({ date, values: [value(date)] }))} series={[{ label: macro.label, color: macro.color }]}
+        format={(v) => `${fmtInt(v)} g`}
+        target={{ lo: goal * (1 - TOLERANCE), hi: goal * (1 + TOLERANCE), label: `Target ${fmtInt(goal * (1 - TOLERANCE))}–${fmtInt(goal * (1 + TOLERANCE))} g`, badges: true }} />
+    </ChartCard>
+  );
+}
+
+/**
+ * By meal: each day stacked by meal, and each meal's average per logged day. One metric switch above both charts
+ * (calories or a macro). Needs the period's individual entries, read once per period.
+ */
+function MealCharts({ ctx }: { ctx: ViewCtx }) {
+  const [entries, setEntries] = useState<FoodLogEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [metric, setMetric] = useState<MealMetric>("kcal");
+  const start = ctx.dates[0]!;
+  const last = ctx.dates[ctx.dates.length - 1]!;
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    api.food.entries(start, addDaysISO(last, 1)).then((e) => live && setEntries(e), (err: Error) => live && setError(err.message));
+    return () => {
+      live = false;
+    };
+  }, [start, last, ctx.data.fetchedAt]);
+
+  const info = METRICS.find((x) => x.key === metric)!;
+  const fmt = (v: number) => (metric === "kcal" ? fmtKcal(v) : `${fmtInt(v)} g`);
+  const list = entries ?? [];
+  const rows = byMealByDay(list, ctx.dates, metric);
+  const avgs = mealAverages(list, metric);
+  const perDay = avgs.meals.reduce((t, x) => t + x.perDay, 0);
+  const top = Math.max(1, ...avgs.meals.map((x) => x.perDay));
+  const shown = rows.filter((r) => r.date <= ctx.today);
+  const loading = ctx.loading || entries === null;
+  const byTime = anyPlacedByTime(list);
+  return (
+    <section className="dash" aria-labelledby="by-meal-h">
+      <div className="food-toolbar">
+        <h2 className="section-title" id="by-meal-h">By meal</h2>
+        <div className="meal-chips" role="group" aria-label="Measure">
+          {METRICS.map((x) => (
+            <button key={x.key} className="chip" aria-pressed={metric === x.key} onClick={() => setMetric(x.key)}>
+              {metric === x.key && <Icon.check />}{x.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {error && <p className="error-text" role="alert">Couldn't load entries: {error}</p>}
+      <div className="dash-grid">
+        <ChartCard title={`${info.label} by meal`} value={avgs.days ? fmtInt(perDay) : dash}
+          unit={avgs.days ? ` ${info.unit} a day on average` : undefined}
+          subtitle={avgs.days ? `Each day split by meal${byTime ? ". Entries logged without a meal are placed by time of day." : ""}` : "No food logged in this period"}
+          loading={loading} legend={MEALS.map((x) => ({ label: x.label, color: x.color, shape: "rect" as const }))}
+          table={{ columns: ["Date", ...MEALS.map((x) => `${x.label} (${info.unit})`)], rows: shown.map((r) => [fmtShortDate(r.date), ...r.values.map((v) => (v !== undefined ? fmtInt(v) : dash))]) }}>
+          <ColumnChart today={ctx.today} rows={rows} series={MEALS.map((x) => ({ label: x.label, color: x.color }))} format={fmt} />
+        </ChartCard>
+        <ChartCard title={`Average ${info.label.toLowerCase()} per meal`}
+          subtitle={avgs.days ? `Per logged day, over ${avgs.days} day${avgs.days === 1 ? "" : "s"}, with each meal's share` : "No food logged in this period"}
+          loading={loading}
+          table={{ columns: ["Meal", `Per day (${info.unit})`, "Share"], rows: avgs.meals.map((x) => [x.label, fmtInt(x.perDay), `${Math.round(x.share)}%`]) }}>
+          <div className="ranges flat" style={{ marginTop: 14 }}>
+            {avgs.meals.map((x) => (
+              <RangeBar key={x.key} label={x.label} detail={`${fmt(x.perDay)} · ${Math.round(x.share)}%`} value={x.perDay} max={top * 1.1} color={x.color} />
+            ))}
+          </div>
+        </ChartCard>
+      </div>
+    </section>
   );
 }

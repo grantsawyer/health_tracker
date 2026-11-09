@@ -126,3 +126,25 @@ describe("/api/setup/credentials", () => {
     expect((await (await get("/api/setup")).json()).clientIdHint).toContain("client.apps.googleusercontent.com");
   });
 });
+
+describe("settings and queue routes return real values", () => {
+  // Regression: these routes once returned a Promise, which serialized as {} instead of the value.
+  it("favorite delete and pending discard report ok: true/false", async () => {
+    const fav = await (await post("/api/food/favorites", { kind: "quick", displayName: "Soup", kcal: 120 })).json();
+    expect(await (await post("/api/food/favorites/delete", { id: fav.id })).json()).toEqual({ ok: true });
+    expect(await (await post("/api/food/favorites/delete", { id: fav.id })).json()).toEqual({ ok: false });
+    expect(await (await post("/api/food/pending/discard", { id: "no-such-row" })).json()).toEqual({ ok: false });
+  });
+
+  it("retry returns the remaining queue as a list", async () => {
+    const body = await (await post("/api/food/pending/retry", {})).json();
+    expect(body).toEqual({ sent: 0, remaining: 0, pending: [] });
+  });
+});
+
+describe("/api/setup", () => {
+  it("says it's the server backend and gives the redirect URI", async () => {
+    const info = await (await get("/api/setup")).json();
+    expect(info).toMatchObject({ mode: "server", redirectUri: "http://localhost:8787/auth/callback" });
+  });
+});

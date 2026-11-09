@@ -35,6 +35,8 @@ export interface GisOAuth2 {
   initTokenClient(config: {
     client_id: string;
     scope: string;
+    /** GIS defaults this to true; we send false (see createGisAuth). */
+    include_granted_scopes?: boolean;
     callback: (r: GisTokenResponse) => void;
     error_callback?: (e: { type: string; message?: string }) => void;
   }): GisTokenClient;
@@ -83,6 +85,10 @@ export interface AuthDeps {
   now?: () => number;
   /** How long a silent renewal may take before giving up. */
   silentTimeoutMs?: number;
+  /** sessionStorage slot name, so two token clients (Health, Drive) don't share one. Default "session". */
+  storageName?: string;
+  /** Account to suggest when this client has no email of its own (the Drive client follows the Health sign-in). */
+  loginHint?: () => string | undefined;
 }
 
 export interface GisAuth {
@@ -99,13 +105,20 @@ export interface GisAuth {
   onChange(listener: (s: PublicSession | null) => void): () => void;
 }
 
-const storageKey = (clientId: string) => `health-tracker:session:${clientId}`;
+/**
+ * Scopes Google may report back besides the ones requested (`email` comes back as userinfo.email).
+ * Anything else in a stored token means it was minted for a different scope set, so it's dropped:
+ * the Google Health API rejects tokens carrying foreign scopes ("Request contains disallowed OAuth scope(s)").
+ */
+const IDENTITY_SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"];
 
 export function createGisAuth(deps: AuthDeps): GisAuth {
   const now = deps.now ?? Date.now;
   const doFetch = deps.fetch ?? ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a));
   const storage = deps.storage === undefined ? (typeof sessionStorage === "undefined" ? null : sessionStorage) : deps.storage;
   const silentTimeoutMs = deps.silentTimeoutMs ?? 8000;
+  const key = `health-tracker:${deps.storageName ?? "session"}:${deps.clientId}`;
+  const allowed = new Set([...deps.scopes, ...IDENTITY_SCOPES]);
   const listeners = new Set<(s: PublicSession | null) => void>();
 
   let gis: GisOAuth2 | null = null;
@@ -120,10 +133,11 @@ export function createGisAuth(deps: AuthDeps): GisAuth {
 
   function restore(): { session: Session | null; email?: string } {
     try {
-      const raw = storage?.getItem(storageKey(deps.clientId));
+      const raw = storage?.getItem(key);
       if (!raw) return { session: null };
       const s = JSON.parse(raw) as Partial<Session>;
-      const valid = !!s.accessToken && typeof s.expiresAt === "number" && s.expiresAt - now() > EXPIRY_MARGIN_MS;
+      const valid = !!s.accessToken && typeof s.expiresAt === "number" && s.expiresAt - now() > EXPIRY_MARGIN_MS
+        && Array.isArray(s.scopes) && s.scopes.every((x) => allowed.has(x));
       return { session: valid ? (s as Session) : null, email: s.email };
     } catch {
       return { session: null };
@@ -132,9 +146,9 @@ export function createGisAuth(deps: AuthDeps): GisAuth {
   function persist() {
     try {
       // An expired session is kept as an account hint (email only, no token).
-      if (session && session.expiresAt > 0) storage?.setItem(storageKey(deps.clientId), JSON.stringify(session));
-      else if (lastEmail) storage?.setItem(storageKey(deps.clientId), JSON.stringify({ email: lastEmail }));
-      else storage?.removeItem(storageKey(deps.clientId));
+      if (session && session.expiresAt > 0) storage?.setItem(key, JSON.stringify(session));
+      else if (lastEmail) storage?.setItem(key, JSON.stringify({ email: lastEmail }));
+      else storage?.removeItem(key);
     } catch {
       /* storage blocked (private mode): memory only */
     }
@@ -151,6 +165,9 @@ export function createGisAuth(deps: AuthDeps): GisAuth {
     client = gis.initTokenClient({
       client_id: deps.clientId,
       scope: deps.scopes.join(" "),
+      // GIS defaults to true. Incremental grants have been reported to break tokens for accounts that once
+      // consented to legacy Google Fit scopes (same rule as the server's OAuth flow).
+      include_granted_scopes: false,
       callback: (r) => {
         const w = waiting;
         waiting = null;
@@ -175,7 +192,8 @@ export function createGisAuth(deps: AuthDeps): GisAuth {
       waiting = { resolve, reject };
       const overrides: { prompt?: string; login_hint?: string } = {};
       if (prompt !== undefined) overrides.prompt = prompt;
-      if (lastEmail) overrides.login_hint = lastEmail;
+      const hint = lastEmail ?? deps.loginHint?.();
+      if (hint) overrides.login_hint = hint;
       c.requestAccessToken(overrides);
     });
   }
@@ -186,7 +204,7 @@ export function createGisAuth(deps: AuthDeps): GisAuth {
       accessToken: r.access_token!,
       expiresAt: now() + Number(r.expires_in ?? 3600) * 1000,
       scopes,
-      email: lastEmail,
+      email: lastEmail ?? deps.loginHint?.(),
     };
     if (scopes.includes("email") || scopes.some((s) => s.endsWith("/userinfo.email"))) {
       try {

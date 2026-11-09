@@ -49,7 +49,7 @@ export function memoryPlatform(opts: { token?: string; clientId?: string } = {})
     async invalidateAccessToken() { /* memory tokens don't expire */ },
     clientId: () => opts.clientId ?? "123456789012-testclientid.apps.googleusercontent.com",
     cache, settings, pending,
-    offUserAgent: "HealthTracker/test",
+    off: { headers: { "User-Agent": "HealthTracker/test" }, search: "searchalicious" },
     log: { info() {}, warn() {} },
   };
   return { platform, settingsMap, rows, signOut: () => { token = null; } };

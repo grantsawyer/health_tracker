@@ -24,7 +24,7 @@ export function CardBoard(props: {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
-  const sectionName = props.section === "today" ? "Today" : "This week";
+  const sectionName = props.section === "today" ? "Today" : "Last 7 days";
   const used = slotsUsed(props.section, ids);
   const free = props.limit - used;
   const sizeOf = (id: MetricId) => (props.section === "today" ? slotSize(id) : 1);

@@ -40,8 +40,11 @@ export const serverPlatform: Platform = {
     markAttempt: async (id, error, permanent, attempts) => markAttempt(id, error, permanent, attempts),
     makeDueNow: async (includeFailed) => makeDueNow(currentUserKey(), includeFailed),
   },
-  get offUserAgent() {
-    return `HealthTracker/0.1 (${process.env.OFF_CONTACT?.trim() || "personal non-commercial use"})`;
+  get off() {
+    return {
+      headers: { "User-Agent": `HealthTracker/0.1 (${process.env.OFF_CONTACT?.trim() || "personal non-commercial use"})` },
+      search: "searchalicious" as const,
+    };
   },
   log: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
 };

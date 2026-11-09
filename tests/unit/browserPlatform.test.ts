@@ -8,7 +8,7 @@ import { createEntry, listPendingWrites, processPendingWrites } from "../../core
 import { getGoals, updateGoals } from "../../core/goals.js";
 import { buildSummary } from "../../core/summary.js";
 import { createGisAuth, type GisAuth } from "../../platform/auth.js";
-import { browserScopes, createBrowserPlatform, startRetryLoop } from "../../platform/browserPlatform.js";
+import { DRIVE_SCOPES, browserScopes, createBrowserPlatform, startRetryLoop } from "../../platform/browserPlatform.js";
 import { createIdbCache } from "../../platform/cache.js";
 import { DRIVE_APPDATA_SCOPE, createDriveAppData } from "../../platform/drive.js";
 import { openDb } from "../../platform/idb.js";
@@ -16,7 +16,7 @@ import { backoffMs, createIdbPending } from "../../platform/queue.js";
 import { createSyncedSettings } from "../../platform/settings.js";
 import { fullScope, HEALTH_SCOPES } from "../../shared/scopes.js";
 import { done, fakeFetch, json } from "../helpers/fakeGoogle.js";
-import { fakeDrive, fakeGis, memoryStorage, tokenAnswer, type GisAnswer } from "../helpers/fakeBrowser.js";
+import { fakeDrive, fakeGis, grantRequested, memoryStorage, tokenAnswer, type GisAnswer } from "../helpers/fakeBrowser.js";
 import { ALL_SCOPES, rollupDay } from "../helpers/fixtures.js";
 
 const CLIENT_ID = "123456789012-testclientid.apps.googleusercontent.com";
@@ -61,7 +61,7 @@ describe("GIS sign-in", () => {
   const scopes = browserScopes();
   const granted = [...scopes];
 
-  function setup(answer: (req: { prompt?: string; login_hint?: string }) => GisAnswer, storage = memoryStorage()) {
+  function setup(answer: (req: { prompt?: string; login_hint?: string; scope: string }) => GisAnswer, storage = memoryStorage()) {
     const gis = fakeGis(answer);
     const auth = createGisAuth({ clientId: CLIENT_ID, scopes, gis: async () => gis.oauth2, storage, now, silentTimeoutMs: 30 });
     return { gis, auth, storage };
@@ -91,7 +91,7 @@ describe("GIS sign-in", () => {
     expect(gis.requests[0]!.prompt).toBeUndefined(); // GIS decides: account chooser + consent the first time
     const s = await pending;
     expect(s.email).toBe(EMAIL_A);
-    expect(auth.hasScope(DRIVE_APPDATA_SCOPE)).toBe(true);
+    expect(auth.hasScope(DRIVE_APPDATA_SCOPE)).toBe(false); // never on the Health token (Google Health rejects it)
     expect(auth.hasScope(fullScope("nutrition.writeonly"))).toBe(true);
     expect(await auth.getAccessToken()).toMatch(/^ya29\.synthetic-/);
   });
@@ -194,9 +194,31 @@ describe("GIS sign-in", () => {
     await expect(auth.getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
   });
 
-  it("asks for every Google Health scope plus openid, email and Drive app data", () => {
-    expect(browserScopes()).toEqual(["openid", "email", ...HEALTH_SCOPES.map((s) => fullScope(s.key)), DRIVE_APPDATA_SCOPE]);
-    expect(browserScopes(false)).not.toContain(DRIVE_APPDATA_SCOPE);
+  it("turns off GIS's include_granted_scopes default and asks for exactly our scopes", async () => {
+    const { auth, gis } = setup(() => tokenAnswer(granted));
+    await auth.load();
+    expect(gis.configs).toEqual([expect.objectContaining({ client_id: CLIENT_ID, include_granted_scopes: false, scope: scopes.join(" ") })]);
+  });
+
+  it("asks for exactly the Google Health scopes plus openid and email; Drive is a separate token", () => {
+    expect(browserScopes()).toEqual(["openid", "email", ...HEALTH_SCOPES.map((s) => fullScope(s.key))]);
+    expect(DRIVE_SCOPES).toEqual([DRIVE_APPDATA_SCOPE]);
+  });
+
+  it("drops a stored token that carries a foreign scope (Google Health answers 403 \"disallowed OAuth scope\")", async () => {
+    // Regression: phase 3's first build put drive.appdata on the Health token.
+    const storage = memoryStorage();
+    storage.setItem(`health-tracker:session:${CLIENT_ID}`, JSON.stringify({
+      accessToken: "ya29.synthetic-mixed", expiresAt: clock + 3600_000, scopes: [...scopes, DRIVE_APPDATA_SCOPE], email: EMAIL_A,
+    }));
+    const { auth } = setup(() => "hang", storage);
+    expect(auth.session()).toBeNull();
+    expect(auth.email()).toBe(EMAIL_A); // kept as the account hint for one-click "Continue"
+    // Google adds userinfo.email for "email": that's not foreign.
+    storage.setItem(`health-tracker:session:${CLIENT_ID}`, JSON.stringify({
+      accessToken: "ya29.synthetic-ok", expiresAt: clock + 3600_000, scopes: [...scopes, "https://www.googleapis.com/auth/userinfo.email"], email: EMAIL_A,
+    }));
+    expect(setup(() => "hang", storage).auth.session()).not.toBeNull();
   });
 });
 
@@ -423,20 +445,23 @@ describe("settings synced to Drive appData", () => {
 describe("core/ on the browser platform", () => {
   async function signedIn(granted: string[] = [...ALL_SCOPES, DRIVE_APPDATA_SCOPE]) {
     const db = await freshDb();
-    const gis = fakeGis(() => tokenAnswer(granted));
-    const auth: GisAuth = createGisAuth({ clientId: CLIENT_ID, scopes: browserScopes(), gis: async () => gis.oauth2, storage: memoryStorage(), now });
-    const bp = createBrowserPlatform({ clientId: CLIENT_ID, auth, db, version: "0.2.0", now, autoSyncMs: 0, log: { info() {}, warn() {} } });
+    const gis = fakeGis(grantRequested(granted));
+    const storage = memoryStorage();
+    const auth: GisAuth = createGisAuth({ clientId: CLIENT_ID, scopes: browserScopes(), gis: async () => gis.oauth2, storage, now });
+    const driveAuth: GisAuth = createGisAuth({ clientId: CLIENT_ID, scopes: DRIVE_SCOPES, gis: async () => gis.oauth2, storage, now, storageName: "drive", loginHint: () => auth.email() });
+    const bp = createBrowserPlatform({ clientId: CLIENT_ID, auth, driveAuth, db, version: "0.2.0", now, autoSyncMs: 0, log: { info() {}, warn() {} } });
     configurePlatform(bp.platform);
     fakeFetch().on("GET", USERINFO, () => json({ email: EMAIL_A }));
     await auth.load();
+    await driveAuth.load();
     await auth.signIn();
-    return { bp, auth, gis, db };
+    return { bp, auth, driveAuth, gis, db, storage };
   }
 
   it("stores records under the signed-in email and identifies itself to Open Food Facts without contact details", async () => {
     const { bp } = await signedIn();
     expect(bp.userKey()).toBe(EMAIL_A);
-    expect(bp.platform.offUserAgent).toBe("HealthTracker/0.2.0");
+    expect(bp.platform.off).toEqual({ headers: {}, query: { app_name: "HealthTracker", app_version: "0.2.0" }, search: "legacy" });
     expect(bp.platform.clientId()).toBe(CLIENT_ID);
   });
 
@@ -472,19 +497,40 @@ describe("core/ on the browser platform", () => {
   it("goals saved through core reach Drive after sign-in sync", async () => {
     const { bp } = await signedIn();
     const drive = fakeDrive();
-    drive.install(fakeFetch());
+    const f = drive.install(fakeFetch());
     await updateGoals({ steps: 12000 });
     await bp.afterSignIn();
+    // Drive isn't connected in this tab yet: paused, and no Drive request without its token.
+    expect(bp.settings.status()).toMatchObject({ state: "paused" });
+    expect(f.calls).toHaveLength(0);
+    expect(await bp.connectDrive()).toMatchObject({ state: "synced" });
     expect(drive.doc()!.entries.goals!.value).toMatchObject({ steps: 12000 });
     expect((await getGoals()).steps).toBe(12000);
   });
 
-  it("reports settings sync as unavailable without calling Drive when the scope wasn't granted", async () => {
+  it("keeps the two tokens apart: Health calls never carry the Drive token, and vice versa", async () => {
+    const { bp, auth, driveAuth, gis, storage } = await signedIn();
+    const drive = fakeDrive();
+    const f = drive.install(fakeFetch()).on("POST", /:dailyRollUp$/, () => json({ rollupDataPoints: [] })).on("GET", /\/dataPoints$/, () => json({ dataPoints: [] }));
+    await bp.connectDrive();
+    await buildSummary("2026-11-06", "2026-11-07", false, new Set(ALL_SCOPES));
+    const healthToken = await auth.getAccessToken();
+    const driveToken = await driveAuth.getAccessToken();
+    expect(healthToken).not.toBe(driveToken);
+    for (const c of f.calls) {
+      const isDrive = c.url.hostname === "www.googleapis.com";
+      expect(c.headers.authorization, `${c.url.pathname}`).toBe(`Bearer ${isDrive ? driveToken : healthToken}`);
+    }
+    expect(gis.configs.map((c) => c.scope)).toEqual([browserScopes().join(" "), DRIVE_APPDATA_SCOPE]);
+    expect(gis.requests[1]!.login_hint).toBe(EMAIL_A); // Drive pop-up suggests the same account
+    expect([...storage.map.keys()].sort()).toEqual([`health-tracker:drive:${CLIENT_ID}`, `health-tracker:session:${CLIENT_ID}`]);
+  });
+
+  it("reports settings sync as unavailable without calling Drive when Drive was declined", async () => {
     const { bp } = await signedIn([...ALL_SCOPES]);
     fakeFetch(); // a Drive call would throw
     await updateGoals({ steps: 6000 });
-    await bp.afterSignIn();
-    expect(bp.settings.status()).toMatchObject({ state: "unavailable" });
+    expect(await bp.connectDrive()).toMatchObject({ state: "unavailable" });
     expect((await getGoals()).steps).toBe(6000);
   });
 

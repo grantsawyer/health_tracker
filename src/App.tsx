@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import type { SetupInfo } from "../shared/types";
+import { api, backendMode } from "./api";
 import { DataExplorer } from "./DataExplorer";
 import { SetupWizard } from "./SetupWizard";
 import { DashboardShell } from "./dashboard/DashboardShell";
 import { Preferences } from "./Preferences";
+import { SettingsCard } from "./SettingsCard";
 import { Icon } from "./ui/icons";
 import type { StatusResponse } from "../shared/types";
 
@@ -56,6 +58,13 @@ export function App() {
       /* not persisted */
     }
   };
+  // Clicking anywhere in the sidebar except a button collapses or expands it (wide screens only; narrow screens
+  // show a top bar instead). The Collapse button stays as the keyboard-accessible way to do the same.
+  const onRailClick = (e: React.MouseEvent) => {
+    if ((e.target as Element).closest("button, a, input, select, textarea, label")) return;
+    if (window.matchMedia("(max-width: 860px)").matches) return;
+    setCollapsed(!collapsed);
+  };
   const [authError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("auth_error");
@@ -92,6 +101,13 @@ export function App() {
     await refresh();
   };
 
+  const [signInError, setSignInError] = useState<string | null>(null);
+  // Called straight from the click: browser mode opens Google's pop-up, which needs that click.
+  const login = () => {
+    setSignInError(null);
+    api.login().then(refresh, (err: Error) => setSignInError(err.message));
+  };
+
   const connected = status?.state === "connected";
   const activeTab: Tab = connected ? tab : "connection";
   const navButton = (t: (typeof TABS)[number]) => (
@@ -103,7 +119,7 @@ export function App() {
 
   return (
     <div className={`shell ${collapsed ? "rail-collapsed" : ""}`}>
-      <aside className="rail">
+      <aside className="rail" onClick={onRailClick}>
         <div className="brand"><span className="brand-mark"><Icon.heart /></span><span>Health Tracker</span></div>
         {connected && (
           <nav className="nav" aria-label="Sections">
@@ -130,9 +146,17 @@ export function App() {
                 Sign-in failed: {describeAuthError(authError)}
               </div>
             )}
+            {signInError && (
+              <div className="banner banner-error" role="alert">
+                Sign-in didn't finish: {signInError}
+              </div>
+            )}
             {loadError && (
               <div className="banner banner-error" role="alert">
-                Couldn't reach the local server. Is <code>npm run dev</code> running? <span className="muted">({loadError})</span>
+                {backendMode === "server"
+                  ? <>Couldn't reach the local server. Is <code>npm run dev:server-mode</code> running? </>
+                  : "Couldn't start the app. "}
+                <span className="muted">({loadError})</span>
               </div>
             )}
             {!status && !loadError && <p className="muted">Checking connection…</p>}
@@ -148,7 +172,8 @@ export function App() {
               status && (
                 <>
                   {connected && <Preferences />}
-                  <ConnectionCard status={status} onLogin={api.login} onLogout={logout} onRetry={refresh} onSetup={() => setShowSetup(true)} />
+                  {connected && <SettingsCard />}
+                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onRetry={refresh} onSetup={() => setShowSetup(true)} />
                 </>
               )
             )}
@@ -183,11 +208,16 @@ function ConnectionCard({ status, onLogin, onLogout, onRetry, onSetup }: CardPro
       return (
         <section className="card">
           <h2>Connect Google Health</h2>
-          <p>Google credentials are saved. Sign in with the Google account you added as a test user.</p>
-          <p className="muted">
-            If Google shows “Access blocked” or “redirect_uri_mismatch”, recheck steps 5–7 in{" "}
-            <button className="link" onClick={onSetup}>setup</button>.
-          </p>
+          <p>Sign in with the Google account you added as a test user.</p>
+          {status.message && <p className="error-text">{status.message}</p>}
+          {backendMode === "server" ? (
+            <p className="muted">
+              If Google shows “Access blocked”, “redirect_uri_mismatch” or an invalid-client error, recheck steps 5–7
+              in <button className="link" onClick={onSetup}>setup</button>.
+            </p>
+          ) : (
+            <SignInHelp onSetup={onSetup} />
+          )}
           <div className="actions">
             <button className="primary" onClick={onLogin}>Sign in with Google</button>
             <button onClick={onSetup}>Change Google credentials</button>
@@ -199,10 +229,14 @@ function ConnectionCard({ status, onLogin, onLogout, onRetry, onSetup }: CardPro
         <section className="card">
           <h2>Sign in again</h2>
           <p>
-            Your Google sign-in expired. While the app's OAuth client is in Testing mode, Google expires it every 7
-            days.
+            {backendMode === "server"
+              ? "Your Google sign-in expired. While the app's OAuth client is in Testing mode, Google expires it every 7 days."
+              : "Your Google sign-in for this visit has ended. A web page can only stay signed in for about an hour without a click, so this is expected."}
           </p>
-          <button className="primary" onClick={onLogin}>Sign in with Google</button>
+          <div className="actions">
+            <button className="primary" onClick={onLogin}>{status.email ? `Continue as ${status.email}` : "Sign in with Google"}</button>
+            <button onClick={onLogout}>Use a different account</button>
+          </div>
         </section>
       );
     case "account_not_linked":
@@ -277,5 +311,40 @@ function ScopeList({ status }: { status: StatusResponse }) {
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * Browser mode: what Google checks when the sign-in pop-up opens, so an
+ * "Access blocked" page can be matched to the setting that's off.
+ */
+function SignInHelp({ onSetup }: { onSetup: () => void }) {
+  const [info, setInfo] = useState<SetupInfo | null>(null);
+  useEffect(() => {
+    void api.setupInfo().then(setInfo, () => {});
+  }, []);
+  return (
+    <details className="signin-help">
+      <summary>Google says “Access blocked”?</summary>
+      <p>On Google's error page, click <strong>error details</strong> and match the code:</p>
+      <ul>
+        <li>
+          <strong>redirect_uri_mismatch</strong> (mentions <code>storagerelay://</code>) or <strong>origin_mismatch</strong>:
+          this page's address isn't under <em>Authorized JavaScript origins</em> of the client below. Add it exactly
+          (no trailing slash) and save; Google can take a few minutes to apply it.
+        </li>
+        <li><strong>access_denied</strong> / “has not completed the Google verification process”: add your account under Audience → Test users.</li>
+        <li><strong>invalid_client</strong> or <strong>deleted_client</strong>: the client ID below is wrong; fix it in <button className="link" onClick={onSetup}>setup</button>.</li>
+        <li><strong>invalid_scope</strong> or a scope error: add the scopes from setup step 6 on the Data Access page.</li>
+      </ul>
+      {info && (
+        <dl className="facts">
+          <dt>This page's origin</dt>
+          <dd><code>{info.javascriptOrigin}</code></dd>
+          <dt>Client ID in use</dt>
+          <dd><code>{info.clientId ?? "none"}</code></dd>
+        </dl>
+      )}
+    </details>
   );
 }

@@ -19,12 +19,31 @@ export const fmtClock = (mins: number) => {
   return `${h % 12 || 12}${mm ? `:${String(mm).padStart(2, "0")}` : ""} ${ampm}`;
 };
 
+export interface ScheduleGoal {
+  /** Goal bedtime / wake time on the chart's scale (minutes from the wake date's midnight). */
+  start?: number;
+  end?: number;
+  /** ± minutes around each goal that count as on schedule (drawn as a band). */
+  tolerance: number;
+}
+
 /**
  * Sleep schedule: one floating bar per night from bedtime to wake time,
  * time of day on the y-axis (earlier at top). Consistency reads as how level
- * the bar ends are. Bars are fully rounded (no baseline).
+ * the bar ends are. Bars are fully rounded (no baseline). With a goal, a band
+ * marks each target time ± the tolerance, nights on schedule get a check, and
+ * the tooltip says how early or late each night was.
  */
-export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow[]; color: string; height?: number }) {
+export function ScheduleChart({ rows, color, height = 200, goal, onSchedule, notes }: {
+  rows: ScheduleRow[];
+  color: string;
+  height?: number;
+  goal?: ScheduleGoal;
+  /** Per row: on schedule (check badge), off, or unknown. */
+  onSchedule?: (boolean | undefined)[];
+  /** Per row: extra tooltip lines, e.g. ["Bedtime", "25 min late"]. */
+  notes?: ([string, string][] | undefined)[];
+}) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const data = rows.filter((r) => r.start !== undefined && r.end !== undefined);
@@ -34,8 +53,9 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
   const innerH = height - M.top - M.bottom;
   // Axis spans the data, but never beyond 6 PM the evening before → 3 PM, so one
   // odd evening session can't squash every normal night (bars outside are clipped).
-  const lo = Math.max(-360, Math.floor(Math.min(...data.map((r) => r.start!)) / 120) * 120);
-  const hi = Math.min(900, Math.ceil(Math.max(...data.map((r) => r.end!)) / 120) * 120);
+  const goalEdges = goal ? [goal.start, goal.end].filter((g): g is number => g !== undefined).flatMap((g) => [g - goal.tolerance, g + goal.tolerance]) : [];
+  const lo = Math.max(-360, Math.floor(Math.min(...data.map((r) => r.start!), ...goalEdges) / 120) * 120);
+  const hi = Math.min(900, Math.ceil(Math.max(...data.map((r) => r.end!), ...goalEdges) / 120) * 120);
   const y = linear(lo, hi, 0, innerH);
   const ticks: number[] = [];
   const step = hi - lo > 12 * 60 ? 240 : 120;
@@ -60,6 +80,19 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
             <g className="viz-grid">{ticks.map((t) => <line key={t} x1={0} x2={innerW} y1={y(t)} y2={y(t)} />)}</g>
             {ticks.map((t) => <text key={t} x={-8} y={y(t)} dy="0.32em" textAnchor="end">{fmtClock(t)}</text>)}
             {active !== null && <rect className="viz-col-hover" x={active * band} y={0} width={band} height={innerH} />}
+            {goal && ([["start", "Bedtime goal"], ["end", "Wake goal"]] as const).map(([k, name]) => {
+              const g = goal[k];
+              if (g === undefined) return null;
+              const top = y(g - goal.tolerance), bottom = y(g + goal.tolerance);
+              return (
+                <g key={k} className="viz-target" aria-hidden>
+                  <rect x={0} y={top} width={innerW} height={bottom - top} />
+                  <line x1={0} x2={innerW} y1={top} y2={top} />
+                  <line x1={0} x2={innerW} y1={bottom} y2={bottom} />
+                  <text x={innerW - 4} y={k === "start" ? top - 4 : bottom + 12} textAnchor="end">{name} {fmtClock(g)}</text>
+                </g>
+              );
+            })}
             <g clipPath="url(#sched-clip)">
             {rows.map((r, i) =>
               r.start !== undefined && r.end !== undefined ? (
@@ -68,6 +101,12 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
               ) : null,
             )}
             </g>
+            {rows.map((r, i) => onSchedule?.[i] && r.start !== undefined && barW >= 14 ? (
+              <g key={`ok-${r.date}`} className="viz-check" transform={`translate(${i * band + band / 2},${y(r.start) + barW / 2})`} aria-hidden>
+                <circle r={barW / 2 - 2} fill="var(--viz-surface)" opacity={0.9} />
+                <path d="M-4.5 0.5l3 3 6-6.5" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+            ) : null)}
             {rows.map((r, i) => labels.has(i) ? <text key={r.date} x={i * band + band / 2} y={innerH + 15} textAnchor="middle">{fmtShortDate(r.date)}</text> : null)}
             {rows.map((r, i) => <rect key={r.date} className="viz-hit" x={i * band} y={0} width={band} height={innerH} onMouseMove={() => setActive(i)} />)}
           </g>
@@ -78,6 +117,7 @@ export function ScheduleChart({ rows, color, height = 200 }: { rows: ScheduleRow
           rows={a.start === undefined ? [{ label: "No main sleep recorded", value: "—" }] : [
             { label: "Bedtime", value: fmtClock(a.start), color },
             { label: "Wake", value: fmtClock(a.end!) },
+            ...(notes?.[active] ?? []).map(([label, value]) => ({ label, value })),
           ]} />
       )}
     </div>

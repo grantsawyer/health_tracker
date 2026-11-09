@@ -6,21 +6,30 @@ food logging written back to Google Health. Single user (the owner). See README.
 ## Session handoff (start here)
 
 **State as of 2026-11-08:**
-- The app works locally (`npm run dev`, then http://localhost:5173) with the redesign, customizable Today page,
-  inline goal editing, sleep benchmarks, food logging, and Open Food Facts.
+- The app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. It has the redesign,
+  customizable Today page, inline goal editing, sleep benchmarks, food logging, and Open Food Facts. The old local
+  server remains as a fallback: `npm run dev:server-mode` (`VITE_BACKEND=server`).
 - **Browser-only migration** (`docs/browser-migration-plan.md`) was approved with the recommended options:
   Google Drive app-data settings sync, GitHub Pages with a public repo, keep the local server until phase 6.
   **Phase 1 (core extraction) is done:** all logic is in `core/`, and the server is a thin host via
   `server/platform.ts`.
 - **Phase 2 (browser platform) is done:** `platform/` holds GIS sign-in, the IndexedDB cache and retry queue, and
-  settings in IndexedDB synced to Drive appData. It is tested but **not wired into the UI yet**.
-- **Next: phase 3**, switching the seam: `src/api.ts` calls `core/` + `platform/` directly, GIS sign-in button,
-  client-ID setup flow, settings export/import, OFF search via `cgi/search.pl` + `X-User-Agent`. Wiring notes are in
-  the plan's §13.
+  settings in IndexedDB synced to Drive appData.
+- **Phase 3 (switch the seam) is built, awaiting the owner's live test** (2026-11-08). `src/api.ts` picks the
+  browser backend (`api.browser.ts` → core + platform) by default. The setup wizard asks for a client ID and a
+  JavaScript origin, sign-in is a GIS pop-up, the Account page has settings export/import plus the Drive sync
+  status, and OFF search uses `cgi/search.pl` with `X-User-Agent`. Verified with fakes only; real sign-in needs
+  the owner to:
+  1. add `http://localhost:5173` under Authorized JavaScript origins on the existing OAuth client;
+  2. enable the Google Drive API and add the `drive.appdata` scope on Data Access;
+  3. paste the client ID once in the setup screen;
+  4. export settings from server mode and import them in browser mode.
+- **Next: phase 4** (multi-user readiness: generic defaults + first-run goals card, per-user isolation checks,
+  "forget this device", docs for test users). Then phase 5 (Pages, CSP, S6 demo mode, S7 CI history scan).
 - **Scope additions** S1–S9 (from a review of seven similar apps, 2026-11-08) are in the plan's §12: recovery vitals,
   BMR-only energy trimming, `.date` filter fallback, food→sleep connections, incremental sync, demo mode, a CI
   history scan before the repo goes public, client ID in the bundle, raw exercise type. Most land after phase 3.
-- **Tests:** `npm test` (204 unit) and `npm run test:e2e` (15 browser). The owner prefers that tests aren't run
+- **Tests:** `npm test` (216 unit) and `npm run test:e2e` (19 browser, serverless app against fakes). The owner prefers that tests aren't run
   unless asked; running them when adding or changing tests is expected.
 - **Before committing:** run `npm run check:privacy`, `npm run typecheck`, and `npm run build`.
 - **History rewrite pushed** 2026-11-08: `origin/main` no longer contains `28d4e58` (force-pushed with lease).
@@ -66,6 +75,13 @@ food logging written back to Google Health. Single user (the owner). See README.
   last-write-wins sync; never throws, reports status), `auth.ts` (GIS token model; `signIn()` must run inside a click;
   token in memory + sessionStorage), `browserPlatform.ts` (`createBrowserPlatform`, `browserScopes`, `startRetryLoop`).
   Tests use `fake-indexeddb` (pinned) and `tests/helpers/fakeBrowser.ts` (fake GIS, Drive, sessionStorage).
+- `core/validate.ts` (range/date/type/source checks, `BadRequestError`) and `core/explorer.ts` (Data explorer test
+  entry + delete), shared by the server routes and the browser seam. `Platform.off` says how to reach Open Food
+  Facts: the server sends `User-Agent` to search-a-licious; the browser calls `cgi/search.pl` with `app_name` /
+  `app_version` query params and no custom headers, so there is no CORS preflight (search-a-licious sends no CORS
+  header, verified 2026-11-08). **OFF's legacy search fails ~50% of requests with a 503 that has no CORS header**,
+  so the browser sees "Failed to fetch" (measured from Chrome 2026-11-09). `getJson` retries network errors and
+  503/502/504: search 4 attempts (~94%), barcode 2.
 - `server/platform.ts`: the server's `Platform` (SQLite cache, app.db settings + pending queue per signed-in
   user, token file, client id). Imported by `server/app.ts`; also migrates the old favorites table once.
 
@@ -90,7 +106,16 @@ food logging written back to Google Health. Single user (the owner). See README.
     `{status:"queued"}`. A timer in index.ts runs `processPendingWrites` every 60 s (backoff 1→60 min).
   - `summary.ts`: `/api/summary` builds normalized `DailySummary[]`, `SleepSession[]`, `ExerciseSession[]`
     (shared/summary.ts) from 11 rollups + 3 lists in parallel; per-type failures land in `errors`
-- `src/`: React + Vite SPA. Dev server proxies `/api` and `/auth` to the Node server.
+- `src/`: React + Vite SPA.
+  - `api.ts` is the seam: `backendMode` comes from `VITE_BACKEND` (default `browser`). Both `api.browser.ts`
+    (core + platform in the page; maps core errors to the same `ApiError` status/`error` keys the server used)
+    and `api.server.ts` (`/api` fetches; Vite proxies `/api` + `/auth` in server mode) implement `Api` in
+    `apiTypes.ts`.
+  - `browser/runtime.ts`: client ID (`health-tracker:client-id` in localStorage, else `VITE_GOOGLE_CLIENT_ID`),
+    IndexedDB, GIS, `configurePlatform`, retry loop. `ensureSynced` pulls Drive settings once per account, waits at
+    most 4 s, and is shared by concurrent callers. `login()` must call GIS synchronously inside the click.
+  - `SettingsCard.tsx` + `settingsTransfer.ts`: Drive sync status, settings export/import (goals, layout,
+    favorite templates; favorites deduplicated on import).
   - `viz/`: hand-rolled SVG charts following the dataviz skill (ColumnChart stacked/single, LineChart
     with optional band, ScheduleChart, StatTile+sparkline, ChartCard with legend + table toggle).
     Palette = dataviz reference slots 1–4 + ordinal blue ramp, validated light/dark; light slots 3–4
@@ -134,6 +159,9 @@ food logging written back to Google Health. Single user (the owner). See README.
   `metadata.{nap, mainSleep}`. Times are UTC plus `*UtcOffset` like `"-18000s"`.
 - `sleep`, `food`, `food-measurement-unit` reject `dataSourceFamily`; list pageSize caps at 25 for sleep/exercise.
 - dailyRollUp range caps: 14 days for heart-rate, active-minutes, total-calories, calories-in-heart-rate-zone; else 90.
+- **Tokens must carry only Google Health scopes (+ openid/email).** A token that also had `drive.appdata` got
+  `403 Request contains disallowed OAuth scope(s)` on every Health call (live, 2026-11-08). The browser uses two
+  GIS clients: Health and Drive (`storageName: "drive"`; connected by a separate click).
 - create/patch/batchDelete return an `Operation` that is already `done: true` with the DataPoint in `response`
   (verified live 2026-11-08).
 - **batchDelete rejects mixed data types** ("Multiple data types are not supported at the moment"), and the `-`
@@ -165,8 +193,11 @@ Adapted, not copied: no Google branding.
   sleep stages stacked deep violet · REM aqua · light blue · awake pink (violet next to blue FAILS);
   macros carbs blue · fat pink · protein gold; intensity (AZM zones, active minutes) = ordinal blue ramp.
   Sample-style pastel blues/cyans failed the checks: deliberately not used.
-- Period model `src/dashboard/period.ts`: D/W/M/3M with ‹ › and back-to-today; weeks are Mon–Sun. No "Y"
-  (a year needs ~27 heart-rate rollup requests, so cold loads would take close to a minute). Today tab = always D.
+- Period model `src/dashboard/period.ts`: D/W/M/3M are **rolling windows ending on the anchor** (owner request
+  2026-11-09): W = last 7 days, M = last 30, 3M = last 90; D shows its day with the 7 days ending on it for
+  context. The latest day is always the last point on every chart. ‹ › move by the window length, never past
+  today; titles "Last 7 days" / "Last 30 days" / "Last 90 days" or the window's dates. No "Y" (a year needs ~27
+  heart-rate rollup requests). Today tab = always D; its second section is "Last 7 days". Tables list newest first.
 - "Typical range" = the owner's own last 30 days, mean ± 1 SD (`baseline.ts`), never population norms.
   Macro "On target" uses a ±10% display tolerance (FoodView), documented as such.
 - Goals live in app.db (`server/goals.ts`, Account page). Google's API exposes none. Defaults are generic and
@@ -181,12 +212,37 @@ Adapted, not copied: no Google branding.
   defaults, validation shared with the server), `server/layout.ts` (app.db, per user; stale ids cleaned on read),
   `src/dashboard/cards.tsx` (registry: tile + week renderers, availability = any data in last 30 days),
   `CardBoard.tsx` (Customize mode: drag/drop + ‹ › + ×, picker; edits are a draft until Done).
-  Today grid: container query on `.today-wrap`: 4 columns ≥760px board width (4 × 3), else 2 (2 × 6); rows 96px;
-  `grid-auto-flow: row dense`; the ring card spans 3 rows. Fitness (D) keeps its own square ring (`.day-hero`).
+  Today grid columns follow the **window** width (owner's breakpoints, 2026-11-08): 1 below 600px, 2 from 600,
+  3 from 1100, 4 from 1500; rows 96px; `grid-auto-flow: row dense`; the ring card spans 3 rows. "This week"
+  (`.mini-grid`) shares the same rule and gap, so both sections always have the same columns (owner request). Fitness (D) keeps its own square ring (`.day-hero`).
 - Goals are editable inline (`src/ui/GoalEditor.tsx`) wherever a goal is shown; all dashboard views share one
   goals source (`goalsContext.tsx`, provided by DashboardShell), so an edit updates every chart immediately.
   Mini trend cards are buttons, so they get no inline editor (no nested buttons); edit from the tab instead.
-- Sidebar collapses to icons (wide screens; `health-tracker:rail-collapsed` in localStorage).
+- Sidebar is sticky (html/body use `overflow-x: clip`; `hidden` made them scroll containers and the sidebar
+  scrolled away). It collapses to icons (wide screens; `health-tracker:rail-collapsed` in localStorage), via the Collapse
+  button or a click on any empty sidebar space (not on a button). Main content max width 1475px (1180 + 25%), centered beside the sidebar.
+- Body charts use `.dash-grid.two-up`: at most two across (each column ≥ half the row), so wide screens get two
+  large charts. Food day view (`.food-day`): log column (meal filter + Refresh/Add food, add panel, meals) first,
+  calories/macros summary (`.food-summary`, first row "Calories") below; 50/50 side by side from 1100px.
+- Sleep quality card (`sleepQuality.ts`, after the owner's sample): time to sound sleep (session start → first
+  deep), sound sleep (deep min), restlessness (awake spells < 5 min between onset and final wake), interruptions
+  (spells ≥ 5 min: minutes + count). App-defined (Google publishes none) and stated on the card. D = that night,
+  W/M/3M = average of the period's nights; vs the owner's last 30 nights; neutral pills like the stage benchmarks.
+  All four bars share one minutes axis (end = 1.15 × largest value or usual-range edge), like the macro bars.
+- Food: macro summary bars share one **gram** axis (track end = 1.15 × the largest goal or intake), so goals of
+  different sizes sit at different points (owner request 2026-11-09; an earlier "relative" version aligned them). Carbs/Fat/Protein charts mirror the Calories eaten chart (goal line, average, "on target ±10%" days).
+  "By meal" section (`src/food/meals.ts`, `api.food.entries(start, end)` → `core getEntries`): daily stacked by
+  meal + average per meal with share, one metric switch (kcal/carbs/fat/protein). Entries without a meal
+  (`ANYTIME`) are placed by time: 4–11 breakfast, 11–15 lunch, 17–21 dinner, else snack (said on the chart). Meal
+  colors = `--series-1..4` (validated light/dark, adjacent stacked pairs pass CVD; light slots 3–4 < 3:1 → tables).
+- Sleep schedule goals (2026-11-09): `bedtime` / `wakeTime` are optional clock goals (minutes after midnight,
+  0–1439, `CLOCK_GOALS` / `OPTIONAL_GOALS` in shared/goals.ts). A night is on schedule when each set goal is within
+  ±`SCHEDULE_TOLERANCE_MIN` (30, a display tolerance) (`checkSchedule` in src/dashboard/sleep.ts; bedtimes from noon
+  on count as the evening before). Schedule chart: goal bands, check on on-schedule nights, early/late in the
+  tooltip, "On schedule N of M nights" pill, `ScheduleGoalEditor` inline; night card sentence; Goals page fields.
+- Macro charts use a target band (goal ± 10%) via `ColumnChart`'s `target` prop (`.viz-target`, goal-line tint,
+  distinct from the green "typical range" band), with check badges for days inside it.
+- `.viz-card-head` wraps: the title keeps ≥240px and the controls drop below when they don't fit.
 - Grid items containing charts must size their column from the card (`minmax(0, 1fr)`), never from the SVG:
   an auto column sized to the chart made charts keep stale widths after a window resize.
 - Pill-shaped bars (from the samples) instead of the dataviz 4px data-end; goal lines with check badges.
@@ -196,7 +252,10 @@ Adapted, not copied: no Google branding.
 ## Tests
 
 - `npm test` = Vitest unit suite (`tests/unit/*.test.ts`); `npm run test:e2e` = Playwright (`tests/e2e/`,
-  Chrome channel, Vite on 5174, all `/api` mocked in-browser via `tests/e2e/mockApi.ts`).
+  Chrome channel, Vite on 5174, browser mode). `tests/e2e/fakeBackend.ts` fakes the GIS script, userinfo, Google
+  Health (stateful nutrition-log points), Drive appData and Open Food Facts in the browser. It seeds the client ID
+  and session via `addInitScript`; settings live under the `todayLayout` / `goals` / `favorites` keys. Assert
+  settings with `expect.poll` (Drive sync is debounced). Server mode has no e2e; its routes are unit-tested.
 - `tests/setup.ts` sets `HEALTH_TRACKER_HOME` to a fresh temp dir per test file BEFORE server modules load
   (config.ts reads env at import). Never point tests at `~/.health_tracker`.
 - `tests/helpers/fakeGoogle.ts` replaces `fetch` with a strict router: unmatched requests throw.

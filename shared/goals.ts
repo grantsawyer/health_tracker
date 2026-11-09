@@ -23,7 +23,22 @@ export interface Goals {
   exerciseDaysPerWeek: number;
   /** Minutes asleep per night; null until the user sets it. */
   sleepMinutes: number | null;
+  /** Target bedtime as a clock time, minutes after midnight (22:30 → 1350); null until set. */
+  bedtime: number | null;
+  /** Target wake time as a clock time, minutes after midnight (06:30 → 390); null until set. */
+  wakeTime: number | null;
 }
+
+/** Goals that are clock times (0–1439, midnight valid) rather than amounts; null = not set. */
+export const CLOCK_GOALS = new Set<keyof Goals>(["bedtime", "wakeTime"]);
+/** Goals that may be cleared (null). */
+export const OPTIONAL_GOALS = new Set<keyof Goals>(["sleepMinutes", "bedtime", "wakeTime"]);
+
+/**
+ * A night is "on schedule" when bedtime and wake time are each within this many minutes of their goals. A display
+ * tolerance (like the macros' ±10%), not a sleep guideline.
+ */
+export const SCHEDULE_TOLERANCE_MIN = 30;
 
 export const DEFAULT_GOALS: Goals = {
   steps: 10000,
@@ -36,6 +51,8 @@ export const DEFAULT_GOALS: Goals = {
   proteinG: 50,
   exerciseDaysPerWeek: 5,
   sleepMinutes: null,
+  bedtime: null,
+  wakeTime: null,
 };
 
 /** Upper bounds for validation and form inputs. */
@@ -50,4 +67,6 @@ export const GOAL_LIMITS: Record<keyof Goals, number> = {
   proteinG: 1000,
   exerciseDaysPerWeek: 7,
   sleepMinutes: 24 * 60,
+  bedtime: 24 * 60 - 1,
+  wakeTime: 24 * 60 - 1,
 };

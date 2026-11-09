@@ -1,7 +1,8 @@
 # Migration plan: browser-only Health Tracker
 
 **Status:** approved 2026-11-08 with the recommended options (Drive settings sync, GitHub Pages with a public repo,
-keep the local server until phase 6). **Phases 1 and 2 done**; phase 3 next. Scope additions from a review of
+keep the local server until phase 6). **Phases 1–2 done; phase 3 built** (awaiting the owner's
+live sign-in test); phase 4 next. Scope additions from a review of
 similar apps are in §12.
 **Goal:** run without any server, local or hosted. The app is a static website (e.g. GitHub Pages) that talks
 directly to Google Health from the browser. Each person who opens it signs in with their own Google account and
@@ -47,8 +48,12 @@ browser or their own Drive.
   never in localStorage.
 - Email for "Signed in as" comes from `openid email` + the `oauth2/v3/userinfo` endpoint (the token model has
   no ID token).
-- **One consent screen** covers everything: the Google Health scopes, plus `drive.appdata` if settings sync is
-  on. Drive is not a separate sign-in.
+- **Two tokens, two pop-ups.** The plan originally had one consent screen for everything, but the Google Health
+  API rejects any token carrying a non-Health scope (`403 Request contains disallowed OAuth scope(s)`, seen live
+  2026-11-08 with `drive.appdata` on the token). So the Health token has only the Health scopes plus openid/email.
+  Drive gets its own token from a second GIS client, connected by its own click ("Connect Google Drive" on the
+  Account page; browsers allow one pop-up per click). Until then settings sync shows as paused, and settings stay
+  local. Stored tokens carrying foreign scopes are discarded.
 - Sign-out revokes the token (`google.accounts.oauth2.revoke`) and clears that user's cached health data. Queued food
   entries and the local settings copy are kept (a removed queue entry is never sent); "Forget this device" removes
   them too, and the UI warns first when entries are still queued. *(Changed in phase 2; the original text cleared the
@@ -131,7 +136,7 @@ Each phase keeps the app working and ends with a check you can try.
 |---|---|---|---|
 | 1 ✅ | **Core extraction** | Move logic from `server/` into `core/` with injected `fetch` and storage interfaces (Google Health client, summary, food rules, OFF, goals/layout/favorites validation, retry queue). The local server calls `core/` so nothing changes for you yet. Unit tests move with it. | All existing unit tests pass against `core/`; app unchanged. |
 | 2 ✅ | **Browser platform** | `platform/auth` (GIS), `platform/cache` + `platform/queue` (IndexedDB), `platform/settings` (Drive appData + local fallback). | New unit tests with fake GIS/Drive/IndexedDB pass. **Done 2026-11-08:** `platform/` (idb, cache, queue, drive, settings, auth, browserPlatform + `startRetryLoop`), 34 tests in `tests/unit/browserPlatform.test.ts`. Not wired into the UI yet (phase 3). |
-| 3 | **Switch the seam** | `src/api.ts` calls `core/` + `platform/` directly instead of `/api/*`. Setup screen becomes client-ID + JavaScript-origin flow; sign-in button uses GIS. Settings export/import. | `npm run dev` works with **no Node server**; browser tests rewritten to mock Google/Drive/OFF endpoints pass. |
+| 3 🟡 | **Switch the seam** | `src/api.ts` calls `core/` + `platform/` directly instead of `/api/*`. Setup screen becomes client-ID + JavaScript-origin flow; sign-in button uses GIS. Settings export/import. | `npm run dev` works with **no Node server**; browser tests rewritten to mock Google/Drive/OFF endpoints pass. **Built 2026-11-08:** browser backend is the default (`src/api.browser.ts`, `src/browser/runtime.ts`); `npm run dev` is Vite only; server mode via `npm run dev:server-mode`. Settings export/import works in both modes. OFF search uses the legacy endpoint (verified: CORS `*`, frequent 503s, so one retry and a "scan the barcode" hint). 19 browser tests against fakes pass; a smoke test confirmed the real GIS script loads. **Owner to verify live** (see §13). |
 | 4 | **Multi-user readiness** | Generic defaults + first-run goals card; runtime client-ID override; per-user cache isolation and clear-on-sign-out; docs for adding test users and running your own copy. | A second test account sees only its own data and its own settings. |
 | 5 | **Hosting** | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. |
 | 6 | **Retire the server** | Delete `server/`, `/api` proxy, SQLite, Node-only deps; update README/CLAUDE.md. | Repo is a static app; `~/.health_tracker` no longer used (kept on disk until you delete it). |
@@ -194,6 +199,25 @@ reaches tokens or settings).
   browsers drop `User-Agent` and core still sets it.
 - **Silent renewal:** may be blocked outside a click. It gives up after 8 s and raises `ReauthRequiredError`, which the
   UI turns into a "Sign in" prompt. The email hint survives reloads, so the next sign-in targets the same account.
+
+### Phase 3: what the owner needs to do to try it live
+
+1. Google Cloud → Clients → your existing Health Tracker client → **Authorized JavaScript origins** → add
+   `http://localhost:5173` → Save. (The redirect URI stays for server mode. The same client ID keeps entries you
+   logged before editable.)
+2. Enable the **Google Drive API** in the same project, and on **Data Access** add
+   `https://www.googleapis.com/auth/drive.appdata`.
+3. In server mode (`npm run dev:server-mode`), open Account → **Export settings**.
+4. Stop it, run `npm run dev`, paste the client ID in the setup screen, sign in, then Account → **Import settings**.
+5. Check: dashboards load, a food entry logs and edits, and Account shows "Synced with your Google Drive".
+
+Notes for later phases:
+- `npm start` serves whatever `dist/` holds. A default build is browser mode, so server-mode production needs
+  `VITE_BACKEND=server npm run build`.
+- Server mode has no browser tests any more; its routes are covered by unit tests until it's removed in phase 6.
+- Fixed on the way: three server routes (favorite delete, pending discard, pending retry) returned `{}` because
+  they didn't await async core calls (a phase 1 regression).
+- GIS defaults `include_granted_scopes` to true; the browser sets it to false (same rule as the server's OAuth).
 
 ## 14. Decisions needed
 

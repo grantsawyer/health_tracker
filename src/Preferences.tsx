@@ -3,6 +3,7 @@ import { ApiError } from "./api";
 import { useGoals } from "./dashboard/useGoals";
 import { useUnits } from "./units";
 import { GOAL_LIMITS, type Goals } from "../shared/goals";
+import { toHHMM, toMinutes } from "./ui/ScheduleGoalEditor";
 
 /**
  * Goals and display units. Google Health's API has no goals, so these live in
@@ -30,10 +31,14 @@ export function Preferences() {
 
   useEffect(() => {
     if (!loaded) return;
-    setDraft(Object.fromEntries(FIELDS.map((f) => {
-      const v = goals[f.key];
-      return [f.key, v === null ? "" : String(f.scale ? Math.round(((v as number) / f.scale) * 100) / 100 : v)];
-    })));
+    setDraft({
+      ...Object.fromEntries(FIELDS.map((f) => {
+        const v = goals[f.key];
+        return [f.key, v === null ? "" : String(f.scale ? Math.round(((v as number) / f.scale) * 100) / 100 : v)];
+      })),
+      bedtime: toHHMM(goals.bedtime),
+      wakeTime: toHHMM(goals.wakeTime),
+    });
   }, [loaded, goals]);
 
   const submit = async (e: React.FormEvent) => {
@@ -50,6 +55,12 @@ export function Preferences() {
       const n = Number(raw) * (f.scale ?? 1);
       if (!Number.isFinite(n) || n <= 0 || n > GOAL_LIMITS[f.key]) return setError(`${f.label} must be a positive number`);
       (out as Record<string, number>)[f.key] = Math.round(n * 10) / 10;
+    }
+    for (const [key, label] of [["bedtime", "Bedtime"], ["wakeTime", "Wake time"]] as const) {
+      const raw = (draft[key] ?? "").trim();
+      const m = raw ? toMinutes(raw) : null;
+      if (raw && m === null) return setError(`${label} must be a time like 22:30`);
+      out[key] = m;
     }
     setState("saving");
     try {
@@ -77,6 +88,17 @@ export function Preferences() {
             </label>
           ))}
         </div>
+        <div className="goals-grid" style={{ marginTop: 12 }}>
+          <label>
+            Bedtime <span className="muted">(optional)</span>
+            <input type="time" value={draft.bedtime ?? ""} onChange={(e) => setDraft((d) => ({ ...d, bedtime: e.target.value }))} />
+          </label>
+          <label>
+            Wake time <span className="muted">(optional)</span>
+            <input type="time" value={draft.wakeTime ?? ""} onChange={(e) => setDraft((d) => ({ ...d, wakeTime: e.target.value }))} />
+          </label>
+        </div>
+        <p className="muted small">A night is on schedule when bedtime and wake time are each within 30 minutes of these.</p>
         {error && <p className="error-text" role="alert">{error}</p>}
         <div className="actions">
           <button className="primary" type="submit" disabled={!loaded || state === "saving"}>{state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Save goals"}</button>

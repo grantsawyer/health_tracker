@@ -14,8 +14,11 @@ import { Pill, type Status } from "../ui/Pill";
 import { distance, fmtBpm, fmtDuration, fmtInt, fmtKcal, fmtMin, fmtPct, weight, type UnitSystem } from "../units";
 import { budgetStatus, goalStatus, rangeStatus, rollingAverage, typicalRange } from "./baseline";
 import type { Period } from "./period";
-import { minutesFrom, nightsByDate, type Night } from "./sleep";
+import { bedtimeOffset, checkSchedule, describeDiff, minutesFrom, nightsByDate, type Night } from "./sleep";
+import { ScheduleGoalEditor } from "../ui/ScheduleGoalEditor";
+import { SCHEDULE_TOLERANCE_MIN } from "../../shared/goals";
 import { compareStages, efficiencyPct, efficiencySentence } from "./sleepStages";
+import { INTERRUPTION_MIN, qualityRows } from "./sleepQuality";
 import { useState } from "react";
 import { CardBoard } from "./CardBoard";
 import { metricById, type MetricDef } from "./cards";
@@ -45,7 +48,7 @@ function Tile(p: { tone: string; icon: () => React.JSX.Element; label: string; v
 
 /**
  * Today: a fixed steps square beside a customizable block of "today" tiles,
- * then a customizable "This week" grid. Customize mode lets the owner add,
+ * then a customizable "Last 7 days" grid. Customize mode lets the owner add,
  * remove and reorder cards from the registry in cards.tsx; the layout is
  * saved per user (app.db).
  */
@@ -84,7 +87,7 @@ export function TodayView(ctx: ViewCtx) {
     </div>
   );
   const week = (def: MetricDef) => (
-    <MiniTrend {...def.week!(ctx)} title={def.week!(ctx).label === def.label ? def.label : def.week!(ctx).label} label={`${def.label} this week`}
+    <MiniTrend {...def.week!(ctx)} title={def.week!(ctx).label === def.label ? def.label : def.week!(ctx).label} label={`${def.label}, last 7 days`}
       dates={ctx.dates} today={ctx.today} onOpen={() => ctx.open(def.tab)} />
   );
 
@@ -112,9 +115,11 @@ export function TodayView(ctx: ViewCtx) {
       </div>
       {error && <p className="error-text" role="alert">{error}</p>}
 
-      <h2 className="section-title">{ctx.dates.includes(ctx.today) ? "This week" : `Week of ${fmtShortDate(ctx.dates[0]!)}`}</h2>
-      <CardBoard section="week" className="mini-grid" ids={shown.week} limit={LAYOUT_LIMITS.week} editing={editing} ctx={ctx}
-        defs={metricById} render={week} onChange={(w) => setDraft({ ...shown, week: w })} />
+      <h2 className="section-title">{ctx.dates.includes(ctx.today) ? "Last 7 days" : `7 days to ${fmtShortDate(ctx.dates[ctx.dates.length - 1]!)}`}</h2>
+      <div className="week-wrap">
+        <CardBoard section="week" className="mini-grid" ids={shown.week} limit={LAYOUT_LIMITS.week} editing={editing} ctx={ctx}
+          defs={metricById} render={week} onChange={(w) => setDraft({ ...shown, week: w })} />
+      </div>
     </div>
   );
 }
@@ -245,11 +250,34 @@ export function SleepView(ctx: ViewCtx) {
   const vsGoal = (min: number | undefined): Status | undefined =>
     goals.sleepMinutes && min !== undefined ? (min >= goals.sleepMinutes ? { tone: "good", text: "Goal met" } : { tone: "warn", text: "Goal not met" }) : undefined;
 
+  // Bedtime / wake goals: each night on schedule when both are within ±SCHEDULE_TOLERANCE_MIN of their goals.
+  const tol = SCHEDULE_TOLERANCE_MIN;
+  const hasSchedGoal = goals.bedtime !== null || goals.wakeTime !== null;
+  const checks = sched.map((s) => checkSchedule(s, goals, tol));
+  const schedNotes = checks.map((c): [string, string][] | undefined => {
+    const out: [string, string][] = [];
+    if (c.bedDiff !== undefined) out.push(["vs bedtime goal", describeDiff(c.bedDiff, tol)]);
+    if (c.wakeDiff !== undefined) out.push(["vs wake goal", describeDiff(c.wakeDiff, tol)]);
+    return out.length ? out : undefined;
+  });
+  const judged = checks.filter((c, i) => c.onSchedule !== undefined && nights[i]!.date <= ctx.today);
+  const onSched = judged.filter((c) => c.onSchedule).length;
+  const schedStatus: Status | undefined = hasSchedGoal && judged.length
+    ? { tone: onSched === judged.length ? "good" : "info", text: `On schedule ${onSched} of ${judged.length} night${judged.length === 1 ? "" : "s"}` }
+    : undefined;
+  const nightCheck = isDay ? checks[nights.findIndex((n) => n.date === ctx.period.anchor)] : undefined;
+  const scheduleNote = nightCheck?.onSchedule === undefined ? undefined
+    : `${nightCheck.onSchedule ? "On schedule" : "Off schedule"}: ${[
+      nightCheck.bedDiff !== undefined && `bedtime ${describeDiff(nightCheck.bedDiff, tol)}`,
+      nightCheck.wakeDiff !== undefined && `wake time ${describeDiff(nightCheck.wakeDiff, tol)}`,
+    ].filter(Boolean).join(", ")}.`;
+
   return (
     <div className="dash">
-      {isDay && <NightDetail night={night} baseline={baseNights} status={vsGoal(night?.asleep || undefined)} />}
+      {isDay && <NightDetail night={night} baseline={baseNights} status={vsGoal(night?.asleep || undefined)} scheduleNote={scheduleNote} />}
 
       <div className="dash-grid">
+        <SleepQuality nights={isDay ? (night ? [night] : []) : tracked} baseline={baseNights} isDay={isDay} loading={ctx.loading} />
         <ChartCard title="Time asleep" goal={<GoalEditor goalKey="sleepMinutes" label="Sleep" unit=" h" scale={60} format={fmtDuration} />} value={avgAsleep !== undefined ? fmtDuration(avgAsleep) : dash} unit=" on average"
           subtitle={`${tracked.length} of ${shown.length} nights tracked${goals.sleepMinutes ? ` · goal ${fmtDuration(goals.sleepMinutes)}` : ""}`} status={vsGoal(avgAsleep)} loading={ctx.loading}
           legend={[{ label: "Deep", color: "var(--stage-deep)", shape: "rect" }, { label: "REM", color: "var(--stage-rem)", shape: "rect" }, { label: "Light", color: "var(--stage-light)", shape: "rect" }, { label: "Awake", color: "var(--stage-awake)", shape: "rect" }]}
@@ -261,10 +289,19 @@ export function SleepView(ctx: ViewCtx) {
             reference={goals.sleepMinutes ? { value: h(goals.sleepMinutes), label: `Goal ${fmtDuration(goals.sleepMinutes)}` } : undefined} />
         </ChartCard>
 
-        <ChartCard title="Sleep schedule" value={avgStart !== undefined && avgEnd !== undefined ? `${fmtClock(avgStart)} – ${fmtClock(avgEnd)}` : dash}
-          subtitle="Average bedtime to wake time" loading={ctx.loading}
-          table={{ columns: ["Night", "Bedtime", "Wake", "In bed"], rows: nights.map((n, i) => ({ n, s: sched[i]! })).filter(({ n }) => n.date <= ctx.today).map(({ n, s }) => [fmtShortDate(n.date), s.start !== undefined ? fmtClock(s.start) : dash, s.end !== undefined ? fmtClock(s.end) : dash, n.main ? fmtDuration(n.main.minutesInBed) : dash]) }}>
-          <ScheduleChart rows={sched} color="var(--sleep)" />
+        <ChartCard title="Sleep schedule" goal={<ScheduleGoalEditor />} status={schedStatus}
+          value={avgStart !== undefined && avgEnd !== undefined ? `${fmtClock(avgStart)} – ${fmtClock(avgEnd)}` : dash}
+          subtitle={hasSchedGoal ? `Average bedtime to wake time. On schedule = within ${tol} min of each goal.` : "Average bedtime to wake time"} loading={ctx.loading}
+          table={{
+            columns: ["Night", "Bedtime", "Wake", "In bed", ...(hasSchedGoal ? ["On schedule"] : [])],
+            rows: nights.map((n, i) => ({ n, s: sched[i]!, c: checks[i]! })).filter(({ n }) => n.date <= ctx.today).map(({ n, s, c }) => [
+              fmtShortDate(n.date), s.start !== undefined ? fmtClock(s.start) : dash, s.end !== undefined ? fmtClock(s.end) : dash, n.main ? fmtDuration(n.main.minutesInBed) : dash,
+              ...(hasSchedGoal ? [c.onSchedule === undefined ? dash : c.onSchedule ? "Yes" : "No"] : []),
+            ]),
+          }}>
+          <ScheduleChart rows={sched} color="var(--sleep)"
+            goal={hasSchedGoal ? { start: goals.bedtime !== null ? bedtimeOffset(goals.bedtime) : undefined, end: goals.wakeTime ?? undefined, tolerance: tol } : undefined}
+            onSchedule={checks.map((c) => c.onSchedule)} notes={schedNotes} />
         </ChartCard>
       </div>
 
@@ -289,7 +326,7 @@ type NightView = "timeline" | "usual" | "average";
  * underneath: the stage timeline, each stage's share of the night compared
  * with the last 30 nights (dashed box = usual range), or the 30-day averages.
  */
-function NightDetail({ night, baseline, status }: { night: Night | undefined; baseline: Night[]; status?: Status }) {
+function NightDetail({ night, baseline, status, scheduleNote }: { night: Night | undefined; baseline: Night[]; status?: Status; scheduleNote?: string }) {
   const [view, setView] = useState<NightView>("timeline");
   const main = night?.main;
   if (!main || !night) {
@@ -310,6 +347,7 @@ function NightDetail({ night, baseline, status }: { night: Night | undefined; ba
             You spent {fmtDuration(main.minutesInBed)} in bed, with a sleep efficiency of {efficiency !== undefined ? pct(efficiency) : "—"}.{" "}
             {efficiencySentence(night, baseline) ?? ""}
           </p>
+          {scheduleNote && <p className="viz-card-sub">{scheduleNote}</p>}
         </div>
         <div className="viz-card-actions">
           {status && <Pill tone={status.tone}>{status.text}</Pill>}
@@ -352,6 +390,54 @@ function NightDetail({ night, baseline, status }: { night: Night | undefined; ba
   );
 }
 
+/**
+ * Sleep quality (after the Google Health app's card): time to sound sleep, sound sleep, restlessness and
+ * interruptions, each against the owner's usual range. D = that night; W/M/3M = the average of the period's nights.
+ * Definitions in sleepQuality.ts, repeated on the card because Google doesn't publish its own.
+ */
+function SleepQuality({ nights, baseline, isDay, loading }: { nights: Night[]; baseline: Night[]; isDay: boolean; loading: boolean }) {
+  const rows = qualityRows(nights.map((n) => n.main), baseline.map((b) => b.main));
+  const history = baseline.filter((b) => b.main).length;
+  const sub = isDay ? "This night, compared with your usual" : `Average of ${nights.length} night${nights.length === 1 ? "" : "s"}, compared with your usual`;
+  const times = (c: number) => (isDay ? `${Math.round(c)} time${Math.round(c) === 1 ? "" : "s"}` : `${c.toFixed(1)} times a night`);
+  // One minutes axis for all four rows (like the macro bars): the same minutes sit at the same x on every track.
+  // It ends 15% past the largest value or usual-range edge.
+  const minutesAxis = Math.max(10, ...rows.flatMap((r) => [r.value ?? 0, r.usual?.hi ?? 0])) * 1.15;
+  return (
+    <section className={`viz-card ${loading ? "viz-loading" : ""}`} aria-labelledby="quality-h">
+      <div className="viz-card-head">
+        <div>
+          <h3 className="viz-card-title" id="quality-h">Sleep quality</h3>
+          <p className="viz-card-sub">{sub}</p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="viz-card-sub" style={{ marginTop: 12 }}>No sleep stages recorded {isDay ? "for this night" : "in this period"}.</p>
+      ) : (
+        <div className="ranges flat" style={{ marginTop: 12 }}>
+          {rows.map((r) => {
+            const usual = r.usual ? { lo: Math.max(0, r.usual.lo), hi: r.usual.hi } : undefined;
+            const detail = r.value === undefined ? "No data"
+              : r.key === "interruptions" && r.count !== undefined ? `${fmtDuration(r.value)} · ${times(r.count)}` : fmtDuration(r.value);
+            return <RangeBar key={r.key} label={r.label} detail={detail} value={r.value} max={minutesAxis} color="var(--sleep)"
+              range={usual} rangeTint="var(--sleep)" status={r.status} knob />;
+          })}
+          <p className="range-note">
+            <i className="range-key" /> Your usual range: average ± 1 standard deviation over your last {history} nights.
+          </p>
+          <details className="range-note">
+            <summary>How these are measured</summary>
+            Google doesn't share these figures, so the app works them out from each night's sleep stages.{" "}
+            <b>Time to sound sleep</b>: from the start of the night to the first deep sleep. <b>Sound sleep</b>: time in deep
+            sleep. <b>Restlessness</b>: time awake in spells shorter than {INTERRUPTION_MIN} minutes, between falling asleep and
+            the final wake-up. <b>Interruptions</b>: awake spells of {INTERRUPTION_MIN} minutes or more in that time.
+          </details>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Body ─────────────────────────────────────────────────────────────────────
 
 export function BodyView(ctx: ViewCtx) {
@@ -374,7 +460,7 @@ export function BodyView(ctx: ViewCtx) {
 
   return (
     <div className="dash">
-      <div className="dash-grid">
+      <div className="dash-grid two-up">
         <ChartCard title="Weight" value={latestW ? W.convert(latestW.value).toFixed(1) : dash} unit={latestW ? ` ${W.unit}` : undefined}
           subtitle={latestW ? (latestW.date === ctx.today ? "Weighed today" : `Last weigh-in ${fmtShortDate(latestW.date)}`) : "No weigh-ins in this period"} loading={ctx.loading}
           legend={[{ label: "Daily", color: S.body, shape: "line" }, { label: "7-day average", color: "var(--viz-muted)", shape: "line" }]}

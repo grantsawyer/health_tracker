@@ -36,6 +36,8 @@ export interface SettingsFile {
 export type SyncStatus =
   /** No Drive client (local-only mode chosen) or not signed in yet. */
   | { state: "local"; reason: string }
+  /** Drive not connected in this tab yet (its token needs a click); local changes are kept. */
+  | { state: "paused"; reason: string }
   /** Drive declined or disabled; local changes are kept. */
   | { state: "unavailable"; reason: string }
   /** A transient failure (offline, 5xx); local changes are kept and retried on the next sync. */
@@ -131,7 +133,7 @@ export function createSyncedSettings(deps: SettingsDeps): SyncedSettings {
       return setStatus({ state: "synced", pulled, pushed, at: now() });
     } catch (err) {
       if (err instanceof DriveUnavailableError) return setStatus({ state: "unavailable", reason: err.message });
-      if (err instanceof ReauthRequiredError) return setStatus({ state: "local", reason: "Sign in to sync settings" });
+      if (err instanceof ReauthRequiredError) return setStatus({ state: "paused", reason: "Connect Google Drive to sync your settings" });
       return setStatus({ state: "error", reason: (err as Error).message });
     }
   }

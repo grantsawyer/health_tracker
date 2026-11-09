@@ -12,7 +12,7 @@ export type Tab = "today" | "fitness" | "sleep" | "food" | "body";
 export interface ViewCtx {
   period: Period;
   today: string;
-  /** Dates on screen (a full Mon–Sun week for D/W, the month(s) for M/3M). */
+  /** Dates on screen: the 7 / 30 / 90 days ending on the anchor (D shows 7 for context); the anchor is last. */
   dates: string[];
   data: SummaryResponse;
   /** The 30 days ending at the anchor: source of "your typical range". */
@@ -54,7 +54,7 @@ export const typical = (ctx: ViewCtx, pick: (d: DailySummary) => number | undefi
   ctx.baseline ? typicalRange(ctx.baseline.days.map(pick)) : undefined;
 export const focusDay = (ctx: ViewCtx) => ctx.data.days.find((d) => d.date === ctx.period.anchor);
 export const upToAnchor = (ctx: ViewCtx) => ctx.data.days.filter((d) => d.date <= ctx.period.anchor);
-export const periodWord = (ctx: ViewCtx) => (ctx.period.kind === "D" || ctx.period.kind === "W" ? "this week" : "in this period");
+export const periodWord = (ctx: ViewCtx) => (ctx.period.kind === "D" || ctx.period.kind === "W" ? "in the last 7 days" : "in this period");
 export const elapsedDays = (ctx: ViewCtx) => ctx.dates.filter((d) => d <= ctx.today).length;
 export function table(ctx: ViewCtx, cols: string[], row: (date: string, d: DailySummary | undefined) => (string | number)[]) {
   const m = byDate(ctx.data);

@@ -14,7 +14,17 @@ describe("goals", () => {
     expect((await updateGoals({ sleepMinutes: null })).sleepMinutes).toBeNull();
     expect((await updateGoals({ exerciseDaysPerWeek: 4.6 })).exerciseDaysPerWeek).toBe(5);
   });
+  it("bedtime and wake time are optional clock times (midnight allowed, clearable)", async () => {
+    signIn(undefined, "clock@example.com");
+    expect(await getGoals()).toMatchObject({ bedtime: null, wakeTime: null });
+    expect(await updateGoals({ bedtime: 1350, wakeTime: 0 })).toMatchObject({ bedtime: 1350, wakeTime: 0 });
+    expect(await updateGoals({ bedtime: null })).toMatchObject({ bedtime: null, wakeTime: 0 });
+  });
   it.each([
+    [{ bedtime: 1440 }, /bedtime must be a time of day/],
+    [{ wakeTime: -1 }, /wakeTime must be a time of day/],
+    [{ wakeTime: 390.5 }, /wakeTime must be a time of day/],
+    [{ bedtime: "22:30" }, /bedtime must be a time of day/],
     [{ steps: 0 }, /steps must be/],
     [{ steps: "8000" }, /steps must be/],
     [{ carbsG: 5000 }, /carbsG must be/],

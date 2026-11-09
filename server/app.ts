@@ -63,6 +63,7 @@ app.post("/auth/logout", async (c) => {
 // ── Setup (in-app Google Cloud configuration) ────────────────────────────────
 app.get("/api/setup", (c) =>
   c.json<SetupInfo>({
+    mode: "server",
     configured: isConfigured(),
     clientIdHint: credentials.clientId ? `…${credentials.clientId.slice(-34)}` : undefined,
     redirectUri: REDIRECT_URI,

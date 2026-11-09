@@ -28,6 +28,9 @@ export class HealthApiError extends Error {
 /** Invalid input from the UI (shown to the user as-is). */
 export class FoodInputError extends Error {}
 
+/** A malformed request (bad date range, unknown data type, …). Shown as-is. */
+export class BadRequestError extends Error {}
+
 /** The entry was written by another app, and the write scope only covers this app's own data. */
 export class NotEditableError extends Error {
   constructor() {

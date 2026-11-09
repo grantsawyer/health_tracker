@@ -10,7 +10,8 @@ export default defineConfig({
     host: "localhost",
     port: 5173,
     strictPort: true,
-    // Same-origin in the browser: /api and /auth are forwarded to the local server.
+    // Server mode only (npm run dev:server-mode): /api and /auth are forwarded to the local server.
+    // The default browser mode calls Google directly and never uses these.
     proxy: {
       "/api": { target },
       "/auth": { target },

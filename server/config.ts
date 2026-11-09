@@ -36,7 +36,7 @@ export const credentials = {
 export const isConfigured = () => credentials.clientId !== "" && credentials.clientSecret !== "";
 
 /** Google web client IDs look like `1234-abc.apps.googleusercontent.com`. */
-export const CLIENT_ID_PATTERN = /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+export { CLIENT_ID_PATTERN } from "../shared/scopes.js";
 
 /**
  * Save credentials to ~/.health_tracker/.env (0600) and apply them immediately.

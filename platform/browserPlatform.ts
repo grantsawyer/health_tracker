@@ -4,7 +4,7 @@ import { createIdbCache } from "./cache.js";
 import { REQUESTED_SCOPES } from "../shared/scopes.js";
 import { DRIVE_APPDATA_SCOPE, DriveUnavailableError, createDriveAppData } from "./drive.js";
 import { createIdbPending } from "./queue.js";
-import { createSyncedSettings, type SyncedSettings } from "./settings.js";
+import { createSyncedSettings, type SyncStatus, type SyncedSettings } from "./settings.js";
 
 /**
  * The browser's core/platform (phase 2 of docs/browser-migration-plan.md):
@@ -13,15 +13,21 @@ import { createSyncedSettings, type SyncedSettings } from "./settings.js";
  * /api calls.
  */
 
-/** Scopes for the single GIS consent screen: Google Health + openid/email, plus Drive appData when sync is on. */
-export const browserScopes = (driveSync = true) => [...REQUESTED_SCOPES, ...(driveSync ? [DRIVE_APPDATA_SCOPE] : [])];
+/**
+ * Scopes for the Health token: Google Health + openid/email, nothing else. The Google Health API rejects a token
+ * that carries any other scope ("Request contains disallowed OAuth scope(s)", seen live 2026-11-08), so Drive gets
+ * its own token (DRIVE_SCOPES) from a second GIS client.
+ */
+export const browserScopes = () => [...REQUESTED_SCOPES];
+export const DRIVE_SCOPES = [DRIVE_APPDATA_SCOPE];
 
 export interface BrowserPlatformOptions {
   clientId: string;
+  /** Google Health sign-in (browserScopes()). */
   auth: GisAuth;
+  /** Separate Drive sign-in (DRIVE_SCOPES) for settings sync; null = settings stay in this browser. */
+  driveAuth: GisAuth | null;
   db: IDBDatabase;
-  /** Sync settings to Google Drive appData (default true). False = this browser only. */
-  driveSync?: boolean;
   /** App version, sent to Open Food Facts as an identifier (no contact details). */
   version: string;
   fetch?: typeof fetch;
@@ -43,6 +49,11 @@ export interface BrowserPlatform {
    * because a removed entry is never sent).
    */
   signOut(opts?: { forgetDevice?: boolean }): Promise<void>;
+  /**
+   * Get the Drive token (its own Google pop-up, so call it from a click) and sync. Browsers allow one pop-up per
+   * click, and the Health sign-in uses it, so Drive can't be connected in the same click.
+   */
+  connectDrive(): Promise<SyncStatus>;
 }
 
 export function createBrowserPlatform(o: BrowserPlatformOptions): BrowserPlatform {
@@ -50,20 +61,21 @@ export function createBrowserPlatform(o: BrowserPlatformOptions): BrowserPlatfor
   const userKey = () => o.auth.email() ?? "local";
   const cache = createIdbCache(o.db, userKey, o.now);
   const pending = createIdbPending(o.db, userKey, o.now);
-  const drive =
-    o.driveSync === false
-      ? null
-      : createDriveAppData({
-          fetch: doFetch,
-          getAccessToken: async () => {
-            // Without the scope Drive answers 403; skip the round trip and let settings report "unavailable".
-            if (o.auth.session() && !o.auth.hasScope(DRIVE_APPDATA_SCOPE)) {
-              throw new DriveUnavailableError("Settings sync wasn't allowed on the Google consent screen");
-            }
-            return o.auth.getAccessToken();
-          },
-          invalidateAccessToken: () => o.auth.invalidateAccessToken(),
-        });
+  const driveAuth = o.driveAuth;
+  const drive = !driveAuth
+    ? null
+    : createDriveAppData({
+        fetch: doFetch,
+        getAccessToken: async () => {
+          // Declined on the consent screen: skip the round trip and let settings report "unavailable".
+          if (driveAuth.session() && !driveAuth.hasScope(DRIVE_APPDATA_SCOPE)) {
+            throw new DriveUnavailableError("Settings sync wasn't allowed on the Google consent screen");
+          }
+          // Not connected in this tab yet: ReauthRequiredError → settings report "paused" (needs a click).
+          return driveAuth.getAccessToken();
+        },
+        invalidateAccessToken: () => driveAuth.invalidateAccessToken(),
+      });
   const settings = createSyncedSettings({ db: o.db, userKey, drive, now: o.now, autoSyncMs: o.autoSyncMs });
 
   const platform: Platform = {
@@ -74,8 +86,9 @@ export function createBrowserPlatform(o: BrowserPlatformOptions): BrowserPlatfor
     cache,
     settings,
     pending,
-    // Browsers can't set User-Agent; phase 3 sends this as X-User-Agent (allowed by OFF's CORS policy).
-    offUserAgent: `HealthTracker/${o.version}`,
+    // Browsers can't set User-Agent, and a custom header would force a CORS preflight (which fails whenever OFF is
+    // busy), so identify with query parameters. No contact details.
+    off: { headers: {}, query: { app_name: "HealthTracker", app_version: o.version }, search: "legacy" },
     log: o.log ?? { info: (m) => console.info(m), warn: (m) => console.warn(m) },
   };
 
@@ -93,7 +106,13 @@ export function createBrowserPlatform(o: BrowserPlatformOptions): BrowserPlatfor
         await pending.clearUser();
         await settings.clearLocal();
       }
+      await o.driveAuth?.signOut();
       await o.auth.signOut();
+    },
+    connectDrive() {
+      // Synchronous up to GIS's requestAccessToken, so it stays inside the click (pop-up permission).
+      if (!driveAuth) return Promise.resolve(settings.status());
+      return driveAuth.signIn().then(() => settings.sync(), () => settings.sync());
     },
   };
 }

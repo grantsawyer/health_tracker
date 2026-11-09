@@ -73,7 +73,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body { overflow-x: hidden; }
+/* clip, not hidden: overflow-x: hidden turns html/body into scroll containers, which breaks the sticky sidebar
+ * (it then sticks to a body that never scrolls, so it scrolls away with the page). */
+html, body { overflow-x: clip; }
 body {
   margin: 0;
   background: var(--bg);
@@ -110,7 +112,8 @@ code { font-size: 0.9em; }
 .nav-btn svg { width: 20px; height: 20px; flex: none; }
 .nav-btn:hover { background: var(--surface); color: var(--text); }
 .nav-btn[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
-.main { padding: 22px 28px 56px; max-width: 1180px; width: 100%; }
+/* Max 1180px + 25% (owner request 2026-11-08), centered in the space beside the sidebar on wide screens. */
+.main { padding: 22px 28px 56px; max-width: 1475px; width: 100%; justify-self: center; }
 
 @media (max-width: 860px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -208,6 +211,11 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .copy-block pre { flex: 1; margin: 0; background: var(--surface-2); border-radius: var(--r-md); padding: 9px 12px; font-size: 12.5px; overflow-x: auto; white-space: pre; }
 .copy-block button { flex: none; white-space: nowrap; }
 .file-pick { display: block; margin: 8px 0; }
+.signin-help { margin-top: 12px; }
+.signin-help summary { cursor: pointer; color: var(--muted); }
+.signin-help li { margin: 6px 0; }
+.sync-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.sync-row button { padding: 4px 12px; }
 @media (max-width: 640px) {
   .step-body { padding-left: 0; }
   .copy-block { flex-direction: column; }
@@ -226,6 +234,8 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .dash { display: grid; gap: 18px; }
 .dash > *, .dash-grid > *, .dash-root > * { min-width: 0; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+/* At most two across: each column is at least half the row (and at least 440px), so wide screens get 2 big charts. */
+.dash-grid.two-up { grid-template-columns: repeat(auto-fit, minmax(min(100%, max(440px, calc((100% - 16px) / 2))), 1fr)); }
 .period-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .period-title { display: flex; align-items: center; gap: 8px; }
 .period-title h1 { margin: 0 8px 0 0; font-size: 28px; letter-spacing: -0.02em; }
@@ -237,7 +247,15 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 }
 
 /* ── Food ── */
-.food-day-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+/* Food day: log column (filter + actions, add panel, meals) and the calories/macros summary.
+ * Stacked (log first) on narrow screens; 50/50 side by side from 1100px. */
+.food-day { display: grid; gap: 18px; align-items: start; }
+.food-day > * { min-width: 0; }
+@media (min-width: 1100px) { .food-day { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.food-log-col { display: grid; gap: 18px; align-content: start; }
+.food-log-col > * { min-width: 0; }
+.food-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.food-toolbar .actions { margin-top: 0; }
 .meal-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 10px; background: none; border: 1px solid var(--surface-3); color: var(--text); font-size: 14px; }
 .chip:hover { background: var(--surface); }
@@ -326,6 +344,8 @@ button:has(> svg) { display: inline-flex; align-items: center; gap: 8px; }
 /* ── Collapsible sidebar (wide screens only; narrow screens use the top bar) ── */
 .shell { transition: grid-template-columns .18s ease; }
 .rail-toggle { margin-top: auto; }
+/* Clicking empty sidebar space toggles it (App.tsx); the pointer says so. */
+@media (min-width: 861px) { .rail { cursor: pointer; } .rail .brand { cursor: pointer; user-select: none; } }
 .shell.rail-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
 .rail-collapsed .rail { padding-left: 10px; padding-right: 10px; }
 .rail-collapsed .brand { padding: 4px 6px 22px; justify-content: center; }

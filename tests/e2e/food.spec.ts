@@ -1,17 +1,21 @@
 import { expect, test } from "@playwright/test";
-import { RICE, mockApi, today } from "./mockApi";
+import { RICE, YOGURT, fakeBackend, today, type Fake } from "./fakeBackend";
 
 const at = (hhmm: string) => `${today()}T${hhmm}`;
+const yesterday = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString("en-CA");
+};
 
 test.afterEach(async ({ page }, info) => {
-  // Every test must stay inside the mock.
-  const state = (page as any).__mock;
-  if (state) expect(state.unmocked, `unmocked requests in "${info.title}"`).toEqual([]);
+  // Every test must stay inside the fakes.
+  const fake = (page as unknown as { __fake?: Fake }).__fake;
+  if (fake) expect(fake.unmocked, `unmocked requests in "${info.title}"`).toEqual([]);
 });
 
-test("quick add logs an entry with the right request and shows it in the day", async ({ page }) => {
-  const mock = await mockApi(page);
-  (page as any).__mock = mock;
+test("quick add sends the right nutrition log to Google and shows it in the day", async ({ page }) => {
+  const fake = await fakeBackend(page);
   await page.goto("/#food");
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await page.getByRole("tab", { name: "Quick add" }).click();
@@ -22,25 +26,25 @@ test("quick add logs an entry with the right request and shows it in the day", a
   await expect(page.getByText("Macros add up to about 388 kcal.")).toBeVisible();
   await page.getByRole("button", { name: "Use that" }).click();
   await expect(page.getByLabel("Calories (kcal)")).toHaveValue("388");
-  await page.getByLabel("Meal").selectOption("LUNCH");
+  await page.getByRole("combobox", { name: /^Meal/ }).selectOption("LUNCH");
   await page.getByLabel("Time").fill("12:30");
   await page.getByRole("button", { name: "Log food" }).click();
 
   await expect(page.locator(".entry-list")).toContainText("Turkey sandwich");
   await expect(page.locator(".meal-name").first()).toHaveText("Lunch");
-  const create = mock.requests.find((r) => r.path === "/api/food/entries" && r.method === "POST")!;
-  expect(create.body).toMatchObject({ kind: "quick", displayName: "Turkey sandwich", kcal: 388, proteinG: 30, carbsG: 40, fatG: 12, mealType: "LUNCH", timeLocal: at("12:30") });
-  expect(typeof create.body.utcOffsetSeconds).toBe("number");
+  const [create] = fake.creates();
+  expect(create).toMatchObject({ foodDisplayName: "Turkey sandwich", energy: { kcal: 388 }, totalCarbohydrate: { grams: 40 }, totalFat: { grams: 12 }, mealType: "LUNCH" });
+  expect(create.nutrients).toContainEqual({ nutrient: "PROTEIN", quantity: { grams: 30 } });
+  expect(fake.localStart(create)).toBe(at("12:30"));
 });
 
 test("own entries can be edited and deleted; other apps' entries are read-only", async ({ page }) => {
-  const mock = await mockApi(page, {
+  const fake = await fakeBackend(page, {
     entries: [
-      { id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 150, editable: true, source: "Health Tracker" },
-      { id: "users/me/dataTypes/nutrition-log/dataPoints/2", timeLocal: at("09:00"), mealType: "BREAKFAST", displayName: "Green tea", kcal: 5, editable: false, source: "Fitbit" },
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 150, editable: true },
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/2", timeLocal: at("09:00"), mealType: "BREAKFAST", displayName: "Green tea", kcal: 5, editable: false },
     ],
   });
-  (page as any).__mock = mock;
   await page.goto("/#food");
   const oatmeal = page.locator(".entry-list li", { hasText: "Oatmeal" });
   const tea = page.locator(".entry-list li", { hasText: "Green tea" });
@@ -52,8 +56,13 @@ test("own entries can be edited and deleted; other apps' entries are read-only",
   await page.getByLabel("Calories (kcal)").fill("180");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator(".entry-list li", { hasText: "Oatmeal" })).toContainText("180 kcal");
-  const update = mock.requests.find((r) => r.path === "/api/food/entries/update")!;
-  expect(update.body).toMatchObject({ id: "users/me/dataTypes/nutrition-log/dataPoints/1", entry: { kind: "quick", displayName: "Oatmeal", kcal: 180, mealType: "BREAKFAST", timeLocal: at("08:00") } });
+  // Quick adds can't be patched: the replacement is created first, then the original deleted.
+  expect(fake.creates()[0]).toMatchObject({ foodDisplayName: "Oatmeal", energy: { kcal: 180 }, mealType: "BREAKFAST" });
+  expect(fake.localStart(fake.creates()[0])).toBe(at("08:00"));
+  const deletes = fake.requests.filter((r) => r.url.pathname.endsWith(":batchDelete"));
+  expect(deletes[0]!.body).toEqual({ names: ["users/me/dataTypes/nutrition-log/dataPoints/1"] });
+  const createdAt = fake.requests.findIndex((r) => r.method === "POST" && r.url.pathname.endsWith("/nutrition-log/dataPoints"));
+  expect(createdAt).toBeLessThan(fake.requests.indexOf(deletes[0]!));
 
   page.once("dialog", (d) => d.accept());
   await page.locator(".entry-list li", { hasText: "Oatmeal" }).getByRole("button", { name: "Delete" }).click();
@@ -62,24 +71,21 @@ test("own entries can be edited and deleted; other apps' entries are read-only",
 });
 
 test("library foods log by amount and unit with a live estimate", async ({ page }) => {
-  const mock = await mockApi(page);
-  (page as any).__mock = mock;
+  const fake = await fakeBackend(page);
   await page.goto("/#food");
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await page.getByRole("tab", { name: "My foods" }).click();
   await page.getByPlaceholder("Search your foods").fill("ric");
-  await page.getByRole("button", { name: /Rice/ }).click();
+  await page.getByRole("button", { name: /^Rice/ }).click();
   await page.getByLabel("Amount").fill("3");
   await expect(page.locator(".food-estimate")).toContainText("120 kcal");
   await page.getByRole("button", { name: "Log food" }).click();
   await expect(page.locator(".entry-list")).toContainText("Rice");
-  const create = mock.requests.find((r) => r.path === "/api/food/entries")!;
-  expect(create.body).toMatchObject({ kind: "food", food: RICE.name, unit: RICE.defaultServing.unit, amount: 3 });
+  expect(fake.creates()[0]).toMatchObject({ food: RICE.name, serving: { foodMeasurementUnit: RICE.defaultServing.unit, amount: 3 } });
 });
 
 test("Open Food Facts search scales nutrition and logs a quick add", async ({ page }) => {
-  const mock = await mockApi(page);
-  (page as any).__mock = mock;
+  const fake = await fakeBackend(page);
   await page.goto("/#food");
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await page.getByRole("tab", { name: "Search" }).click();
@@ -93,32 +99,37 @@ test("Open Food Facts search scales nutrition and logs a quick add", async ({ pa
   await expect(page.locator(".food-estimate")).toContainText("220 kcal");
   await page.getByRole("button", { name: "Log food" }).click();
   await expect(page.locator(".entry-list")).toContainText("Greek Yogurt (Chobani), 2 servings (150 g)");
-  const create = mock.requests.find((r) => r.path === "/api/food/entries")!;
-  expect(create.body).toMatchObject({ kind: "quick", kcal: 220, proteinG: 24, carbsG: 32 });
-  expect(mock.requests.some((r) => r.path === "/api/off/product")).toBe(true);
+  const create = fake.creates()[0];
+  expect(create).toMatchObject({ energy: { kcal: 220 }, totalCarbohydrate: { grams: 32 } });
+  expect(create.nutrients).toContainEqual({ nutrient: "PROTEIN", quantity: { grams: 24 } });
+  // Browser search uses the CORS-enabled legacy endpoint and identifies itself with X-User-Agent.
+  const search = fake.requests.find((r) => r.url.pathname === "/cgi/search.pl")!;
+  expect(search.url.searchParams.get("search_terms")).toBe("chobani greek yogurt");
+  expect(fake.requests.some((r) => r.url.pathname === `/api/v2/product/${YOGURT.code}.json`)).toBe(true);
 });
 
-test("saving a favorite makes the panel open on Favorites next time", async ({ page }) => {
-  const mock = await mockApi(page);
-  (page as any).__mock = mock;
+test("saving a favorite syncs it and makes the panel open on Favorites next time", async ({ page }) => {
+  const fake = await fakeBackend(page, {
+    entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/7", timeLocal: `${yesterday()}T08:00`, mealType: "SNACK", displayName: "Hummus", kcal: 70, proteinG: 2, carbsG: 4, fatG: 5, editable: true }],
+  });
   await page.goto("/#food");
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await page.getByRole("button", { name: /Hummus/ }).click(); // from Recent
   await page.getByRole("button", { name: "☆ Save as favorite" }).click();
   await expect(page.getByRole("button", { name: "★ Saved to favorites" })).toBeVisible();
-  expect(mock.favorites[0]!.template).toMatchObject({ kind: "quick", displayName: "Hummus", kcal: 70 });
+  await expect.poll(() => fake.favorites[0]?.template).toMatchObject({ kind: "quick", displayName: "Hummus", kcal: 70 });
 
   await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Favorites" })).toHaveAttribute("aria-selected", "true");
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Remove Hummus from favorites" }).click();
-  await expect.poll(() => mock.favorites.length).toBe(0);
+  await expect.poll(() => fake.favorites.length).toBe(0);
 });
 
-test("when Google is down the entry is queued and shown as waiting to sync", async ({ page }) => {
-  const mock = await mockApi(page, { googleDown: true });
-  (page as any).__mock = mock;
+test("when Google is down the entry is queued in the browser and shown as waiting to sync", async ({ page }) => {
+  const fake = await fakeBackend(page);
+  fake.googleDown = true;
   await page.goto("/#food");
   await page.getByRole("button", { name: "Add food", exact: true }).click();
   await page.getByRole("tab", { name: "Quick add" }).click();
@@ -130,19 +141,21 @@ test("when Google is down the entry is queued and shown as waiting to sync", asy
   const banner = page.getByLabel("Entries waiting to sync");
   await expect(banner).toContainText("1 entry waiting to sync to Google Health");
   await expect(banner).toContainText("Offline snack");
+  // Still queued after a reload (IndexedDB).
+  await page.reload();
+  await expect(page.getByLabel("Entries waiting to sync")).toContainText("Offline snack");
   page.once("dialog", (d) => d.accept());
-  await banner.getByRole("button", { name: "Discard" }).click();
-  await expect(banner).toHaveCount(0);
+  await page.getByLabel("Entries waiting to sync").getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByLabel("Entries waiting to sync")).toHaveCount(0);
 });
 
 test("meal cards collapse, and chips filter by meal", async ({ page }) => {
-  const mock = await mockApi(page, {
+  await fakeBackend(page, {
     entries: [
-      { id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 150, editable: true, source: "Health Tracker" },
-      { id: "users/me/dataTypes/nutrition-log/dataPoints/2", timeLocal: at("19:00"), mealType: "DINNER", displayName: "Salmon", kcal: 400, editable: true, source: "Health Tracker" },
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 150, editable: true },
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/2", timeLocal: at("19:00"), mealType: "DINNER", displayName: "Salmon", kcal: 400, editable: true },
     ],
   });
-  (page as any).__mock = mock;
   await page.goto("/#food");
   const breakfast = page.getByRole("button", { name: /Breakfast\s*1 item/ });
   await expect(breakfast).toHaveAttribute("aria-expanded", "true");
@@ -156,4 +169,80 @@ test("meal cards collapse, and chips filter by meal", async ({ page }) => {
   await expect(page.locator(".meal-name")).toHaveText("Dinner");
   await page.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.locator(".meal-card")).toHaveCount(2);
+});
+
+test("day layout: log first and summary below; side by side (50/50) on wide screens", async ({ page }) => {
+  await fakeBackend(page, {
+    entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 150, editable: true }],
+  });
+  const box = (sel: string) => page.locator(sel).first().boundingBox().then((b) => b!);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/#food");
+  await expect(page.locator(".entry-list")).toContainText("Oatmeal");
+  // The summary's first row is "Calories" (not "Budget").
+  await expect(page.locator(".food-summary")).toContainText("Calories ·");
+  await expect(page.locator(".food-summary")).not.toContainText("Budget");
+  let log = await box(".food-log-col"), summary = await box(".food-summary");
+  expect(summary.y).toBeGreaterThan(log.y + log.height - 1); // stacked: summary below the log
+  expect((await box(".meal-chips")).y).toBeLessThan((await box(".meals")).y); // filter and actions on top
+
+  await page.setViewportSize({ width: 1300, height: 900 });
+  log = await box(".food-log-col");
+  summary = await box(".food-summary");
+  expect(Math.abs(log.y - summary.y)).toBeLessThan(2); // side by side
+  expect(summary.x).toBeGreaterThan(log.x + log.width);
+  expect(Math.abs(log.width - summary.width)).toBeLessThan(2); // 50/50
+});
+
+test("macro bars share one gram axis: goal markers sit in proportion to the goals", async ({ page }) => {
+  await fakeBackend(page, {
+    goals: { steps: 10000, activeZoneMinutes: 22, floors: 10, caloriesBurned: 2000, caloriesEaten: 2000, carbsG: 120, fatG: 60, proteinG: 90, exerciseDaysPerWeek: 5, sleepMinutes: null },
+    entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 400, carbsG: 30, fatG: 20, proteinG: 40, editable: true }],
+  });
+  await page.goto("/#food");
+  await expect(page.locator(".food-summary")).toContainText("Protein · ");
+  const rows = page.locator(".food-summary .range-row").filter({ hasText: /^(Carbs|Fat|Protein)/ });
+  await expect(rows).toHaveCount(3);
+  // Marker centers relative to each track's left edge, in px: proportional to 120 : 60 : 90 g.
+  const centers = await rows.evaluateAll((els) => els.map((row) => {
+    const track = row.querySelector(".range-track")!.getBoundingClientRect();
+    const m = row.querySelector(".range-target")!.getBoundingClientRect();
+    return m.left + m.width / 2 - track.left;
+  }));
+  const [carbs, fat, protein] = centers as [number, number, number];
+  expect(fat / carbs).toBeCloseTo(60 / 120, 1);
+  expect(protein / carbs).toBeCloseTo(90 / 120, 1);
+});
+
+test("week view: carbs, fat and protein charts, and by-meal charts with a measure switch", async ({ page }) => {
+  await fakeBackend(page, {
+    entries: [
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/1", timeLocal: at("08:00"), mealType: "BREAKFAST", displayName: "Oatmeal", kcal: 300, carbsG: 50, fatG: 6, proteinG: 10, editable: true },
+      { id: "users/me/dataTypes/nutrition-log/dataPoints/2", timeLocal: at("12:30"), mealType: "ANYTIME", displayName: "Sandwich", kcal: 500, carbsG: 55, fatG: 18, proteinG: 25, editable: true },
+    ],
+  });
+  await page.goto("/#food");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  for (const name of ["Carbs", "Fat", "Protein"]) {
+    const card = page.locator(".viz-card", { has: page.getByRole("heading", { name, exact: true }) });
+    await expect(card).toContainText("g a day on average");
+    await expect(card.getByRole("button", { name: new RegExp(`^Goal .* for ${name}`) })).toBeVisible();
+  }
+  const byMeal = page.locator("section[aria-labelledby=by-meal-h]");
+  await expect(byMeal.getByRole("heading", { name: "Calories by meal" })).toBeVisible();
+  await expect(byMeal).toContainText("placed by time of day"); // the ANYTIME sandwich
+  await expect(byMeal).toContainText("Lunch · 500 kcal");
+  await byMeal.getByRole("button", { name: "Protein", exact: true }).click();
+  await expect(byMeal.getByRole("heading", { name: "Protein by meal" })).toBeVisible();
+  await expect(byMeal).toContainText("Breakfast · 10 g");
+});
+
+test("macro charts show the goal ± 10% as a target band", async ({ page }) => {
+  await fakeBackend(page);
+  await page.goto("/#food");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  const carbs = page.locator(".viz-card", { has: page.getByRole("heading", { name: "Carbs", exact: true }) });
+  await expect(carbs.locator(".viz-target")).toHaveCount(1);
+  await expect(carbs.locator(".viz-target-label")).toHaveText("Target 248–303 g"); // default goal 275 g
+  await expect(carbs.locator(".viz-goal")).toHaveCount(0);
 });

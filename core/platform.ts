@@ -51,6 +51,21 @@ export interface PendingStore {
   makeDueNow(includeFailed: boolean): Promise<void>;
 }
 
+export interface OffConfig {
+  /**
+   * Identifies the app (OFF's API policy asks for it). The server sends a `User-Agent` header. Browsers can't set
+   * that, and any custom header (X-User-Agent) forces a CORS preflight, so the browser sends `app_name` /
+   * `app_version` query parameters instead and keeps requests "simple" (one GET, no preflight).
+   */
+  headers: Record<string, string>;
+  query?: Record<string, string>;
+  /**
+   * `searchalicious` = search.openfoodfacts.org (fast, but sends no CORS header, so server only).
+   * `legacy` = world.openfoodfacts.org/cgi/search.pl (CORS `*`, slower and sometimes 503; browser).
+   */
+  search: "searchalicious" | "legacy";
+}
+
 export interface Platform {
   /** Network access (Google Health, Open Food Facts). */
   fetch: typeof fetch;
@@ -63,8 +78,8 @@ export interface Platform {
   cache: CacheStore;
   settings: SettingsStore;
   pending: PendingStore;
-  /** Identifies the app to Open Food Facts (their API policy asks for it). */
-  offUserAgent: string;
+  /** How this host talks to Open Food Facts (see core/openFoodFacts.ts). */
+  off: OffConfig;
   log: { info(msg: string): void; warn(msg: string): void };
 }
 

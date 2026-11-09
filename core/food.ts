@@ -175,6 +175,16 @@ export async function getDay(date: string, fresh = false): Promise<FoodLogDay> {
   return { date, entries, totals: { kcal: sum("kcal"), proteinG: sum("proteinG"), carbsG: sum("carbsG"), fatG: sum("fatG") } };
 }
 
+/** Every entry with a local date in [start, end), oldest first (for by-meal charts over a period). */
+export async function getEntries(start: string, end: string, fresh = false): Promise<FoodLogEntry[]> {
+  const res = await getPoints(NUTRITION_LOG, { start, end, fresh });
+  const units = await unitsIfNeeded(res.value.dataPoints);
+  return res.value.dataPoints
+    .map((p) => mapEntry(p, units))
+    .filter((e): e is FoodLogEntry => e !== null && e.timeLocal.slice(0, 10) >= start && e.timeLocal.slice(0, 10) < end)
+    .sort((a, b) => a.timeLocal.localeCompare(b.timeLocal));
+}
+
 /** Distinct items logged in the last 30 days, most recent first. Keyed by food resource, or name + kcal for quick adds. */
 export async function getRecents(today: string, fresh = false): Promise<RecentFood[]> {
   const res = await getPoints(NUTRITION_LOG, { start: addDays(today, -30), end: addDays(today, 1), fresh });

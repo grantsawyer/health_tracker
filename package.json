@@ -1,11 +1,12 @@
 {
   "name": "health-tracker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Personal dashboard for Google Health data (fitness, sleep, nutrition) with food logging",
   "scripts": {
-    "dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "dev": "vite",
+    "dev:server-mode": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web-server-mode\"",
     "dev:server": "APP_ORIGIN=http://localhost:5173 tsx watch server/index.ts",
-    "dev:web": "vite",
+    "dev:web-server-mode": "VITE_BACKEND=server vite",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.tests.json",

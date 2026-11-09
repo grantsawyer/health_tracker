@@ -71,7 +71,8 @@
 
 /* ── Chart card ── */
 .viz-card { background: var(--viz-surface); border-radius: var(--r-xl); padding: 20px 22px 14px; min-width: 0; color: var(--viz-ink); }
-.viz-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+/* Wraps: the title keeps ≥240px and the controls (status pill, goal, Table) drop below it when they don't fit. */
+.viz-card-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
 .viz-card-title { font-size: 17px; font-weight: 600; margin: 0; }
 .viz-card-sub { font-size: 13.5px; color: var(--viz-ink-2); margin: 2px 0 0; }
 .viz-card-value { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 0; line-height: 1.15; }
@@ -92,6 +93,11 @@
 .viz-grid line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .viz-baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
 .viz-goal { stroke: var(--goal-line); stroke-width: 1.5; opacity: .8; }
+/* Goal target band (macros ±10%, sleep schedule ±30 min): goal-line tint with dashed edges. Distinct from the green
+ * "typical range" band (--viz-band), which is about the owner's history, not a goal. */
+.viz-target rect { fill: color-mix(in srgb, var(--goal-line) 14%, transparent); }
+.viz-target line { stroke: var(--goal-line); stroke-width: 1; stroke-dasharray: 4 3; opacity: .75; }
+.viz-target text { fill: var(--viz-ink-2); font-size: 11px; }
 .viz-hit { fill: transparent; cursor: default; outline: none; }
 .viz-col-hover { fill: var(--viz-ink); opacity: 0.06; }
 .viz-cross { stroke: var(--viz-muted); stroke-width: 1; shape-rendering: crispEdges; }
@@ -115,7 +121,8 @@
 .viz-table-wrap { max-height: 340px; overflow: auto; }
 
 /* ── Mini trend cards (overview grid) ── */
-.mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 14px; }
+/* Columns come from the shared Today rule below, so "Last 7 days" always matches "Today". */
+.mini-grid { display: grid; gap: var(--gap); }
 .mini-card {
   display: grid; gap: 2px; align-content: start; text-align: left; width: 100%;
   background: var(--viz-surface); border: none; border-radius: var(--r-xl); padding: 18px 20px 16px; color: var(--viz-ink);
@@ -131,16 +138,19 @@ button.mini-card:hover { background: var(--surface-2); }
 .mini-foot { display: flex; }
 
 /* ── Today grid ──
- * 12 slots: 4 columns × 3 rows when the board is ≥760px wide, else 2 × 6. Rows are
- * fixed height; the steps ring spans three rows. Dense packing fills the gaps, so a
- * narrow column holds the ring plus three cards. A container query (not the
- * viewport) decides the columns, so collapsing the sidebar counts too. */
-.today-wrap { container-type: inline-size; --tile-h: 96px; --gap: 12px; }
+ * 12 slots. Columns follow the window width (owner's breakpoints, 2026-11-08):
+ * 1 below 600px, 2 from 600, 3 from 1100, 4 from 1500 (4 × 3, 3 × 4, 2 × 6, 1 × 12).
+ * Rows are fixed height; the steps ring spans three rows. Dense packing fills the gaps.
+ * "Last 7 days" (.mini-grid) shares the rule and gap, so both sections always have the
+ * same number of columns. */
+.today-wrap, .week-wrap { --tile-h: 96px; --gap: 12px; }
+.today-grid, .mini-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 600px) { .today-grid, .mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .today-grid, .mini-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1500px) { .today-grid, .mini-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .today-grid {
-  display: grid; gap: var(--gap); grid-auto-flow: row dense;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: var(--tile-h);
+  display: grid; gap: var(--gap); grid-auto-flow: row dense; grid-auto-rows: var(--tile-h);
 }
-@container (min-width: 760px) { .today-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .today-grid > .board-item { min-width: 0; height: 100%; }
 .today-grid > .span-3 { grid-row: span 3; }
 .today-grid .board-add { min-height: 0; height: 100%; }
@@ -236,7 +246,7 @@ button.tile:hover { filter: brightness(1.08); }
 .hypno-track { fill: var(--viz-track); }
 .hypno-link { stroke: var(--viz-muted); stroke-width: 1; opacity: .45; }
 
-.viz-card-head > div:first-child { flex: 1; min-width: 0; }
+.viz-card-head > div:first-child { flex: 1 1 240px; min-width: 0; }
 
 /* ── Night card (Sleep, D) ── */
 .night-card { display: grid; gap: 14px; }

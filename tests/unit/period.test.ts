@@ -1,55 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { canStepForward, displayDates, displayRange, fetchRange, isCurrent, periodTitle, step, weekStart } from "../../src/dashboard/period";
+import { WINDOW_DAYS, canStepForward, displayDates, displayRange, fetchRange, isCurrent, periodTitle, step } from "../../src/dashboard/period";
 import { budgetStatus, goalStatus, rangeStatus, rollingAverage, typicalRange } from "../../src/dashboard/baseline";
 
-const TODAY = "2026-11-08"; // a Sunday
+const TODAY = "2026-11-08";
 
-describe("period ranges", () => {
-  it("weeks run Monday to Sunday", () => {
-    expect(weekStart("2026-11-08")).toBe("2026-11-02");
-    expect(weekStart("2026-11-02")).toBe("2026-11-02");
-    expect(weekStart("2026-11-01")).toBe("2026-10-26"); // a Sunday belongs to the week before
+describe("period ranges: rolling windows ending on the anchor", () => {
+  it("D and W show the 7 days ending on the anchor; M 30; 3M 90; the anchor is always last", () => {
+    expect(displayRange({ kind: "W", anchor: "2026-11-05" })).toEqual({ start: "2026-10-30", end: "2026-11-06" });
+    expect(displayRange({ kind: "D", anchor: "2026-11-05" })).toEqual({ start: "2026-10-30", end: "2026-11-06" });
+    expect(displayRange({ kind: "M", anchor: TODAY })).toEqual({ start: "2026-10-10", end: "2026-11-09" });
+    expect(displayRange({ kind: "3M", anchor: TODAY })).toEqual({ start: "2026-08-11", end: "2026-11-09" });
+    for (const kind of ["D", "W", "M", "3M"] as const) {
+      const dates = displayDates({ kind, anchor: TODAY });
+      expect(dates).toHaveLength(WINDOW_DAYS[kind]);
+      expect(dates.at(-1)).toBe(TODAY);
+    }
   });
-  it("D and W show the anchor's whole week", () => {
-    for (const kind of ["D", "W"] as const) expect(displayRange({ kind, anchor: "2026-11-05" })).toEqual({ start: "2026-11-02", end: "2026-11-09" });
-    expect(displayDates({ kind: "W", anchor: "2026-11-05" })).toHaveLength(7);
-  });
-  it("M is the calendar month; 3M is that month and the two before", () => {
-    expect(displayRange({ kind: "M", anchor: "2026-11-08" })).toEqual({ start: "2026-11-01", end: "2026-12-01" });
-    expect(displayRange({ kind: "3M", anchor: "2026-11-08" })).toEqual({ start: "2026-09-01", end: "2026-12-01" });
-    expect(displayRange({ kind: "3M", anchor: "2027-01-15" })).toEqual({ start: "2026-11-01", end: "2027-02-01" });
+  it("crosses month and year boundaries without snapping to calendar starts", () => {
+    expect(displayRange({ kind: "W", anchor: "2027-01-02" })).toEqual({ start: "2026-12-27", end: "2027-01-03" });
   });
   it("fetchRange never asks for future days", () => {
-    expect(fetchRange({ kind: "M", anchor: TODAY }, TODAY)).toEqual({ start: "2026-11-01", end: "2026-11-09" });
-    expect(fetchRange({ kind: "W", anchor: "2026-10-20" }, TODAY)).toEqual({ start: "2026-10-19", end: "2026-10-26" });
+    expect(fetchRange({ kind: "M", anchor: TODAY }, TODAY)).toEqual({ start: "2026-10-10", end: "2026-11-09" });
+    expect(fetchRange({ kind: "W", anchor: "2026-10-20" }, TODAY)).toEqual({ start: "2026-10-14", end: "2026-10-21" });
   });
 });
 
 describe("period stepping and titles", () => {
-  it("steps by the period length, clamping month ends", () => {
-    expect(step({ kind: "D", anchor: TODAY }, -1).anchor).toBe("2026-11-07");
-    expect(step({ kind: "W", anchor: TODAY }, -1).anchor).toBe("2026-11-01");
-    expect(step({ kind: "M", anchor: "2026-03-31" }, -1).anchor).toBe("2026-02-28");
-    expect(step({ kind: "3M", anchor: TODAY }, -1).anchor).toBe("2026-08-08");
+  it("steps by the window length (a day for D), never past today", () => {
+    expect(step({ kind: "D", anchor: TODAY }, -1, TODAY).anchor).toBe("2026-11-07");
+    expect(step({ kind: "W", anchor: TODAY }, -1, TODAY).anchor).toBe("2026-11-01");
+    expect(step({ kind: "M", anchor: TODAY }, -1, TODAY).anchor).toBe("2026-10-09");
+    expect(step({ kind: "3M", anchor: TODAY }, -1, TODAY).anchor).toBe("2026-08-10");
+    expect(step({ kind: "W", anchor: "2026-11-05" }, 1, TODAY).anchor).toBe(TODAY); // clamped
   });
-  it("can't step into a period that's entirely in the future", () => {
+  it("can step forward only while the window ends before today", () => {
     expect(canStepForward({ kind: "D", anchor: TODAY }, TODAY)).toBe(false);
     expect(canStepForward({ kind: "D", anchor: "2026-11-07" }, TODAY)).toBe(true);
     expect(canStepForward({ kind: "W", anchor: TODAY }, TODAY)).toBe(false);
-    expect(canStepForward({ kind: "M", anchor: "2026-10-15" }, TODAY)).toBe(true);
+    expect(canStepForward({ kind: "M", anchor: "2026-11-01" }, TODAY)).toBe(true);
   });
   it("titles read naturally", () => {
     expect(periodTitle({ kind: "D", anchor: TODAY }, TODAY)).toBe("Today");
     expect(periodTitle({ kind: "D", anchor: "2026-11-07" }, TODAY)).toBe("Yesterday");
-    expect(periodTitle({ kind: "W", anchor: TODAY }, TODAY)).toBe("This week");
-    expect(periodTitle({ kind: "W", anchor: "2026-10-28" }, TODAY)).toBe("Last week");
-    expect(periodTitle({ kind: "W", anchor: "2026-10-14" }, TODAY)).toMatch(/Oct 12 – 18/);
-    expect(periodTitle({ kind: "M", anchor: TODAY }, TODAY)).toMatch(/November 2026/);
-    expect(periodTitle({ kind: "3M", anchor: TODAY }, TODAY)).toMatch(/Sep – Nov 2026/);
+    expect(periodTitle({ kind: "W", anchor: TODAY }, TODAY)).toBe("Last 7 days");
+    expect(periodTitle({ kind: "M", anchor: TODAY }, TODAY)).toBe("Last 30 days");
+    expect(periodTitle({ kind: "3M", anchor: TODAY }, TODAY)).toBe("Last 90 days");
+    expect(periodTitle({ kind: "W", anchor: "2026-10-18" }, TODAY)).toMatch(/Oct 12 – 18/);
+    expect(periodTitle({ kind: "M", anchor: "2026-11-01" }, TODAY)).toMatch(/Oct 3 – Nov 1/);
+    expect(periodTitle({ kind: "W", anchor: "2026-01-03" }, TODAY)).toMatch(/Dec 28, 2025 – Jan 3, 2026/);
   });
-  it("isCurrent", () => {
-    expect(isCurrent({ kind: "W", anchor: "2026-11-03" }, TODAY)).toBe(true);
-    expect(isCurrent({ kind: "D", anchor: "2026-11-03" }, TODAY)).toBe(false);
+  it("isCurrent means the window ends today", () => {
+    expect(isCurrent({ kind: "W", anchor: TODAY }, TODAY)).toBe(true);
+    expect(isCurrent({ kind: "W", anchor: "2026-11-03" }, TODAY)).toBe(false);
   });
 });
 

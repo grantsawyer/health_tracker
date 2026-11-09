@@ -40,12 +40,14 @@ export function ColumnChart(props: {
   height?: number;
   /** Optional goal line; with `badges`, columns at or above it get a check badge. */
   reference?: { value: number; label: string; badges?: boolean };
+  /** Optional target range (e.g. goal ± 10%), drawn as a band; with `badges`, columns inside it get a check badge. */
+  target?: { lo: number; hi: number; label: string; badges?: boolean };
   /** Override y-axis tick labels (e.g. append a unit). */
   tickFormat?: (v: number) => string;
   /** Highlights this date's axis label. */
   today?: string;
 }) {
-  const { rows, series, format, height = 200, reference, tickFormat, today } = props;
+  const { rows, series, format, height = 200, reference, target, tickFormat, today } = props;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
@@ -54,7 +56,7 @@ export function ColumnChart(props: {
 
   const innerW = Math.max(0, width - M.left - M.right);
   const innerH = height - M.top - M.bottom;
-  const maxV = Math.max(...totals, reference?.value ?? 0, 1);
+  const maxV = Math.max(...totals, reference?.value ?? 0, target?.hi ?? 0, 1);
   const ticks = niceTicks(0, maxV, 4);
   const top = ticks[ticks.length - 1]!;
   const y = linear(0, top, innerH, 0);
@@ -101,13 +103,21 @@ export function ColumnChart(props: {
               <text key={t} x={-8} y={y(t)} dy="0.32em" textAnchor="end">{fmtTick(t)}</text>
             ))}
             {active !== null && <rect className="viz-col-hover" x={active * band} y={0} width={band} height={innerH} />}
+            {target && (
+              <g className="viz-target" aria-hidden>
+                <rect x={0} y={y(target.hi)} width={innerW} height={y(target.lo) - y(target.hi)} />
+                <line x1={0} x2={innerW} y1={y(target.hi)} y2={y(target.hi)} />
+                <line x1={0} x2={innerW} y1={y(target.lo)} y2={y(target.lo)} />
+              </g>
+            )}
             {rows.map((r, i) => {
               const x = i * band + (band - barW) / 2;
               let base = innerH;
               const topIdx = r.values.reduce((t, v, j) => (v ? j : t), -1);
               const bottomIdx = r.values.findIndex((v) => Boolean(v));
               const round = barW / 2;
-              const met = reference?.badges && totals[i]! >= reference.value;
+              const met = (reference?.badges && totals[i]! >= reference.value)
+                || (target?.badges && r.values.some((v) => v !== undefined) && totals[i]! >= target.lo && totals[i]! <= target.hi);
               return (
                 <g key={r.date}>
                   {r.values.map((v, j) => {
@@ -135,6 +145,7 @@ export function ColumnChart(props: {
                 <text x={innerW} y={y(reference.value) - 5} textAnchor="end">{reference.label}</text>
               </g>
             )}
+            {target && <text className="viz-target-label" x={innerW} y={y(target.hi) - 5} textAnchor="end">{target.label}</text>}
             <line className="viz-baseline" x1={0} x2={innerW} y1={innerH} y2={innerH} />
             {lastIdx >= 0 && band >= 14 && (
               <text className="viz-label" x={lastIdx * band + band / 2} y={y(totals[lastIdx]!) - 5} textAnchor="middle">

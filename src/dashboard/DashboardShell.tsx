@@ -94,8 +94,8 @@ function Shell({ tab, onReauth, onNavigate }: ShellProps) {
       <div className="period-bar">
         <div className="period-title">
           <h1>{periodTitle(period, today)}</h1>
-          <button className="icon-btn" aria-label="Previous" onClick={() => setChosen((p) => ({ ...p, anchor: step({ kind: period.kind, anchor: p.anchor }, -1).anchor }))}><Icon.chevronLeft /></button>
-          <button className="icon-btn" aria-label="Next" disabled={!canStepForward(period, today)} onClick={() => setChosen((p) => ({ ...p, anchor: step({ kind: period.kind, anchor: p.anchor }, 1).anchor }))}><Icon.chevronRight /></button>
+          <button className="icon-btn" aria-label="Previous" onClick={() => setChosen((p) => ({ ...p, anchor: step({ kind: period.kind, anchor: p.anchor }, -1, today).anchor }))}><Icon.chevronLeft /></button>
+          <button className="icon-btn" aria-label="Next" disabled={!canStepForward(period, today)} onClick={() => setChosen((p) => ({ ...p, anchor: step({ kind: period.kind, anchor: p.anchor }, 1, today).anchor }))}><Icon.chevronRight /></button>
           {!isCurrent(period, today) && (
             <button className="icon-btn" aria-label="Back to today" title="Back to today" onClick={() => setChosen((p) => ({ ...p, anchor: today }))}><Icon.reset /></button>
           )}

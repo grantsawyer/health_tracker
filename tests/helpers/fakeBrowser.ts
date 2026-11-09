@@ -11,17 +11,20 @@ export type GisAnswer =
   | { error: string } // error_callback type, e.g. popup_failed_to_open
   | "hang"; // never answers (silent renewal blocked without a pop-up)
 
-export function fakeGis(answer: (req: { prompt?: string; login_hint?: string }) => GisAnswer) {
+/** `answer` also gets the token client's scope string (`req.scope`), like the scopes Google is asked for. */
+export function fakeGis(answer: (req: { prompt?: string; login_hint?: string; scope: string }) => GisAnswer) {
   const requests: { prompt?: string; login_hint?: string }[] = [];
   const revoked: string[] = [];
+  const configs: Parameters<GisOAuth2["initTokenClient"]>[0][] = [];
   let inits = 0;
   const oauth2: GisOAuth2 = {
     initTokenClient(cfg) {
       inits++;
+      configs.push(cfg);
       return {
         requestAccessToken(overrides = {}) {
           requests.push(overrides);
-          const a = answer(overrides);
+          const a = answer({ ...overrides, scope: cfg.scope });
           if (a === "hang") return;
           // GIS answers asynchronously (after the pop-up closes).
           setTimeout(() => ("error" in a ? cfg.error_callback?.({ type: a.error }) : cfg.callback(a.token)), 0);
@@ -33,10 +36,14 @@ export function fakeGis(answer: (req: { prompt?: string; login_hint?: string }) 
       done?.();
     },
   };
-  return { oauth2, requests, revoked, inits: () => inits };
+  return { oauth2, requests, revoked, configs, inits: () => inits };
 }
 
 let tokenSeq = 0;
+/** Answer like Google with include_granted_scopes=false: only the requested scopes the user granted. */
+export const grantRequested = (granted: string[]) => (req: { scope: string }) =>
+  tokenAnswer(req.scope.split(" ").filter((s) => granted.includes(s)));
+
 /** A synthetic GIS token answer with the given scopes. */
 export const tokenAnswer = (scopes: string[], expiresIn = 3599): GisAnswer => ({
   token: { access_token: `ya29.synthetic-${++tokenSeq}`, expires_in: expiresIn, scope: scopes.join(" ") },
