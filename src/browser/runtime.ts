@@ -5,6 +5,7 @@ import { DRIVE_SCOPES, browserScopes, createBrowserPlatform, startRetryLoop, typ
 import { openDb } from "../../platform/idb";
 import { CLIENT_ID_PATTERN } from "../../shared/scopes";
 import { APP_VERSION } from "../../shared/version";
+import { isDemo } from "../demo/mode";
 
 /**
  * The browser backend's wiring (docs/browser-migration-plan.md §13): one
@@ -52,6 +53,8 @@ export function saveClientId(clientId: string): void {
 }
 
 async function create(): Promise<Runtime> {
+  // Demo (?demo): synthetic data, no Google. A separate chunk, loaded only here.
+  if (isDemo()) return (await import("../demo/demoRuntime")).createDemoRuntime();
   const stored = readStored();
   const clientId = stored ?? buildClientId();
   const base = { clientId, clientIdFromBuild: !stored && Boolean(clientId), gisError: null as Error | null };

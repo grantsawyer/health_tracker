@@ -6,6 +6,7 @@ import { SetupWizard } from "./SetupWizard";
 import { DashboardShell } from "./dashboard/DashboardShell";
 import { Preferences } from "./Preferences";
 import { SettingsCard } from "./SettingsCard";
+import { exitDemo, isDemo, startDemo } from "./demo/mode";
 import { Icon } from "./ui/icons";
 import type { StatusResponse } from "../shared/types";
 
@@ -121,6 +122,9 @@ export function App() {
   };
 
   const connected = status?.state === "connected";
+  const demo = isDemo();
+  // The setup and sign-in screens offer the demo (browser mode only; the demo runs in the page).
+  const offerDemo = backendMode === "browser" && !demo && Boolean(status) && ["not_configured", "signed_out", "reauth_required"].includes(status!.state);
   const activeTab: Tab = connected ? tab : "connection";
   const navButton = (t: (typeof TABS)[number]) => (
     <button key={t.id} className="nav-btn" onClick={() => setTab(t.id)} aria-current={activeTab === t.id ? "page" : undefined}
@@ -147,6 +151,12 @@ export function App() {
       </aside>
 
       <main className="main">
+        {demo && (
+          <div className="banner banner-demo" role="status">
+            <strong>Demo data.</strong> Every value is synthetic, nothing is sent to Google, and your changes are gone
+            when you reload. <button className="link" onClick={exitDemo}>Exit demo</button>
+          </div>
+        )}
         {isDashTab(activeTab) ? (
           <DashboardShell tab={activeTab} onReauth={refresh} onNavigate={setTab} onAccount={() => setTab("connection")} />
         ) : activeTab === "explorer" ? (
@@ -185,9 +195,18 @@ export function App() {
                 <>
                   {connected && <Preferences />}
                   {connected && <SettingsCard />}
-                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onForget={backendMode === "browser" ? forget : undefined} onRetry={refresh} onSetup={() => setShowSetup(true)} />
+                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onForget={backendMode === "browser" && !demo ? forget : undefined} onRetry={refresh} onSetup={() => setShowSetup(true)} />
                 </>
               )
+            )}
+            {offerDemo && (
+              <section className="card">
+                <h2>Just looking?</h2>
+                <p>Try the whole app on synthetic data. No Google account needed, and nothing is saved.</p>
+                <div className="actions">
+                  <button onClick={startDemo}>Try the demo</button>
+                </div>
+              </section>
             )}
           </div>
         )}

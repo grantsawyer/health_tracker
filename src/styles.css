@@ -173,6 +173,8 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .banner-error { background: var(--error-bg); color: var(--error); }
 .banner-warn { background: var(--warn-bg); color: var(--warn-ink); }
 .banner-ok { background: var(--good-bg); color: var(--good-ink); }
+/* Demo mode: on every screen, above the content, so synthetic values are never mistaken for real ones. */
+.banner-demo { background: var(--info-bg); color: var(--info-ink); margin-bottom: 16px; }
 
 /* ── Account / connection ── */
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 12px 0 0; }
