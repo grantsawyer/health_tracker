@@ -222,9 +222,10 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
                         <ul className="entry-list">
                           {g.entries.map((e) => (
                             <li key={e.id}>
-                              {/* Two rows: name | kcal + actions, then details | macro bar (owner layout 2026-11-11). */}
+                              {/* Name over details, then the three macro bars, then kcal + actions (owner layout 2026-11-11). */}
                               <span className="entry-time muted">{fmtTime(e.timeLocal)}</span>
                               <span className="entry-name" title={e.displayName}>{e.displayName}</span>
+                              <span className="entry-bars"><MacroSplitBar food={e} /></span>
                               <span className="entry-right">
                                 <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
                                 <span className="entry-actions">
@@ -246,7 +247,6 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
                                 {[e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`, e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`].filter(Boolean).join(" · ")}
                                 {!e.editable && e.source ? ` · via ${e.source}` : ""}
                               </span>
-                              <span className="entry-bar"><MacroSplitBar food={e} /></span>
                             </li>
                           ))}
                         </ul>

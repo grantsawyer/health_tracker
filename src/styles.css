@@ -277,23 +277,24 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .chev { width: 20px; height: 20px; color: var(--muted); transition: transform .15s; flex: none; }
 .meal-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .entry-list { list-style: none; padding: 0 20px 8px; margin: 0; }
-/* Two rows per entry: time | name | kcal + icon buttons, then details under the name and the macro bar under the
- * kcal/buttons. The name stays on one line (ellipsis; full name in its tooltip). */
+/* Entry: time | name over details | three macro bars | kcal + icon buttons. The name stays on one line (ellipsis;
+ * full name in its tooltip). */
 .entry-list li {
-  display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 2px 14px;
-  grid-template-areas: "time name right" "time detail bar"; padding: 10px 0; border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: 74px minmax(0, 1fr) auto auto; align-items: center; gap: 2px 14px;
+  grid-template-areas: "time name bars right" "time detail bars right"; padding: 10px 0; border-top: 1px solid var(--border);
 }
 .entry-time { grid-area: time; font-size: 13px; font-variant-numeric: tabular-nums; }
 .entry-name { grid-area: name; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .entry-right { grid-area: right; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .entry-detail { grid-area: detail; min-width: 0; }
-.entry-bar { grid-area: bar; display: flex; align-self: center; }
+.entry-bars { grid-area: bars; display: flex; align-self: center; }
 .entry-icon { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; }
 .entry-icon svg { width: 17px; height: 17px; }
-/* Per-food macro balance (share of macro calories): carbs · fat · protein, gaps between segments so neighbors
- * stay distinct without relying on hue alone. Exact shares are in its label/tooltip. */
-.macro-split { display: flex; gap: 2px; height: 6px; width: 100%; border-radius: 999px; overflow: hidden; }
-.macro-split-seg { flex: 0 1 0; min-width: 2px; }
+/* Per-food macro balance (share of macro calories): carbs · fat · protein as three vertical bars in fixed order,
+ * each on its own track, so position as well as hue tells them apart. Exact shares are in the label/tooltip. */
+.macro-bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
+.macro-bar { position: relative; width: 6px; height: 100%; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.macro-bar-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 999px; }
 .entry-detail { font-size: 12.5px; }
 .entry-kcal { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .entry-actions { display: flex; gap: 4px; font-size: 12.5px; }
@@ -325,7 +326,7 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .scanner { display: grid; gap: 8px; }
 .scanner video { width: 100%; max-width: 420px; border-radius: var(--r-md); background: #000; }
 @media (max-width: 640px) {
-  .entry-list li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "time time" "name right" "detail bar"; }
+  .entry-list li { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "time time time" "name bars right" "detail bars right"; }
   .pick-list button { flex-direction: column; gap: 2px; }
   .meal-kcal { font-size: 20px; }
 }

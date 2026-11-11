@@ -51,7 +51,7 @@ test("own entries can be edited and deleted; other apps' entries are read-only",
   await expect(tea).toContainText("Read-only");
   await expect(tea.getByRole("button")).toHaveCount(0);
   // Calories-only entries have no macro bar.
-  await expect(tea.locator(".macro-split")).toHaveCount(0);
+  await expect(tea.locator(".macro-bars")).toHaveCount(0);
 
   await oatmeal.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("Google can't edit quick-add entries in place")).toBeVisible();
@@ -256,10 +256,13 @@ test("each logged food shows its carbs / fat / protein balance", async ({ page }
   await page.goto("/#food");
   const bar = page.locator(".entry-list li", { hasText: "Synthetic wrap" }).getByRole("img", { name: /of calories/ });
   await expect(bar).toHaveAttribute("aria-label", "Carbs 48% · Fat 27% · Protein 24% of calories");
-  await expect(bar.locator(".macro-split-seg")).toHaveCount(3);
+  // Three vertical bars (carbs, fat, protein), each filled to its share.
+  await expect(bar.locator(".macro-bar-fill")).toHaveCount(3);
+  const heights = await bar.locator(".macro-bar-fill").evaluateAll((els) => els.map((el) => (el as HTMLElement).style.height));
+  expect(heights.map((h) => Math.round(parseFloat(h)))).toEqual([48, 27, 24]);
 });
 
-test("entry rows: one-line names, icon buttons, macro bar under kcal and buttons", async ({ page }) => {
+test("entry rows: one-line names, icon buttons, macro bars between the text and kcal + buttons", async ({ page }) => {
   const long = "Synthetic grain bowl with roasted vegetables, chickpeas, tahini dressing and extra toppings";
   await fakeBackend(page, {
     entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/11", timeLocal: at("12:30"), mealType: "LUNCH", displayName: long, kcal: 610, carbsG: 70, fatG: 25, proteinG: 22, editable: true }],
@@ -272,9 +275,10 @@ test("entry rows: one-line names, icon buttons, macro bar under kcal and buttons
   expect((await name.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
   await expect(row.getByRole("button", { name: `Edit ${long}` })).toBeVisible();
   await expect(row.getByRole("button", { name: `Delete ${long}` })).toBeVisible();
-  // The bar sits below the kcal + buttons, right-aligned with them.
+  // The bars sit between the name/details and kcal + buttons.
+  const text = (await name.boundingBox())!;
+  const bars = (await row.locator(".macro-bars").boundingBox())!;
   const right = (await row.locator(".entry-right").boundingBox())!;
-  const bar = (await row.locator(".macro-split").boundingBox())!;
-  expect(bar.y).toBeGreaterThan(right.y + right.height - 1);
-  expect(Math.abs(bar.x + bar.width - (right.x + right.width))).toBeLessThan(2);
+  expect(bars.x).toBeGreaterThanOrEqual(text.x + text.width);
+  expect(bars.x + bars.width).toBeLessThanOrEqual(right.x);
 });
