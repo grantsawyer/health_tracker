@@ -256,9 +256,9 @@ Adapted, not copied: no Google branding.
   `PeriodSleepDetail` (averages over the period's nights via `compareStagesOver`), no Timeline (owner request).
 - Sleep schedule chart: bedtime at the bottom, wake time at the top (y reversed, owner request 2026-11-11). Goal
   target bands (schedule, carbs/fat/protein) are a tint only, no dashed edges (owner request).
-- Food log entries carry three small vertical macro bars (`src/food/macroSplit.ts`, `MacroSplitBar.tsx`; owner
+- Food log entries carry three small stacked horizontal macro bars (`src/food/macroSplit.ts`, `MacroSplitBar.tsx`; owner
   request 2026-11-11, replacing one horizontal proportion bar): carbs · fat · protein in fixed order, each on its own
-  track filled to its share of macro calories (4/9/4 kcal/g, like the day summary); exact shares in the label; none
+  track filled (left to right) to its share of macro calories (4/9/4 kcal/g, like the day summary); exact shares in the label; none
   for calories-only entries. Entry row grid: time | macro bars | one-line name (ellipsis, full name in `title`) over
   details | kcal + pencil/trash icon buttons (`aria-label` "Edit <name>" / "Delete <name>"). Entry text lists
   macros in the same order as the bars.

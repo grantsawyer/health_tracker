@@ -256,10 +256,10 @@ test("each logged food shows its carbs / fat / protein balance", async ({ page }
   await page.goto("/#food");
   const bar = page.locator(".entry-list li", { hasText: "Synthetic wrap" }).getByRole("img", { name: /of calories/ });
   await expect(bar).toHaveAttribute("aria-label", "Carbs 48% · Fat 27% · Protein 24% of calories");
-  // Three vertical bars (carbs, fat, protein), each filled to its share.
+  // Three stacked bars (carbs, fat, protein), each filled to its share.
   await expect(bar.locator(".macro-bar-fill")).toHaveCount(3);
-  const heights = await bar.locator(".macro-bar-fill").evaluateAll((els) => els.map((el) => (el as HTMLElement).style.height));
-  expect(heights.map((h) => Math.round(parseFloat(h)))).toEqual([48, 27, 24]);
+  const widths = await bar.locator(".macro-bar-fill").evaluateAll((els) => els.map((el) => (el as HTMLElement).style.width));
+  expect(widths.map((w) => Math.round(parseFloat(w)))).toEqual([48, 27, 24]);
 });
 
 test("entry rows: one-line names, icon buttons, macro bars before the name and details", async ({ page }) => {
