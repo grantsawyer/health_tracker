@@ -21,7 +21,9 @@ variable, OAuth origin), then Claude pushes when asked and helps with the live t
   again (runbook B3/B4). Check `git log origin/main..main` at the start.
 - **Hosting:** `.github/workflows/pages.yml` (scan → typecheck + unit tests + `PAGES_BASE=/health_tracker/ vite
   build` → deploy). CSP lives in `vite.config.ts` (`CSP`), production builds only: any new external host must be
-  added there. Demo: `?demo` (`src/demo/`).
+  added there. One CSP console error on load is expected and harmless: GIS's button stylesheet (`style-src-elem`,
+  `googleidentityservice_button_styles`); we don't render Google's button, so don't add `'unsafe-inline'` for it.
+  Demo: `?demo` (`src/demo/`). Live: https://grantsawyer.github.io/health_tracker/ (first deploy 2026-11-11).
 - **Git rules:** commit directly to `main` (owner's instruction); **push only when the owner asks**.
 - **Pre-commit hook:** `.githooks/pre-commit` runs on every commit (enabled via `core.hooksPath` by `npm install` /
   `npm run hooks:install`). It runs `scripts/check-secrets.mjs --staged` (agent folders, credentials, passwords in

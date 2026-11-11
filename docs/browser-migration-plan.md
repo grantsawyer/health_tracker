@@ -312,6 +312,16 @@ All six steps are built and committed (not pushed):
 
   Not covered: the real GIS pop-up (Google's documented CSP entries are in), so watch the console on the first live
   sign-in.
+
+  **Live check (2026-11-11):**
+  - **Result:** the real GIS script loads, and the demo runs on the live site.
+  - **The one console error:** `gsi/client` injects `<style id="googleidentityservice_button_styles">` for Google's
+    rendered button, and the CSP blocks it.
+  - **Why it's harmless:** the app never renders that button (it uses the token client's pop-up, which runs on
+    Google's page outside our CSP).
+  - **Kept strict on purpose:**
+    - no `'unsafe-inline'` in `style-src`;
+    - no hash either, since Google changes that stylesheet without notice.
 - **A4 (workflow):** `.github/workflows/pages.yml`: `scan` → `build` (typecheck, unit tests, Pages build) →
   `deploy`; Pages permissions on the deploy job only.
 - **A5 (demo):** `src/demo/`:
