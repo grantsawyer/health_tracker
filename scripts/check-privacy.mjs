@@ -11,6 +11,8 @@
  * Usage:
  *   node scripts/check-privacy.mjs           scan every tracked file
  *   node scripts/check-privacy.mjs --staged  scan staged content (used by the pre-commit hook)
+ *   node scripts/check-privacy.mjs --history every commit message, file path and added line in all commits
+ *                                            (run before the repo goes public; history is published too)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -38,7 +40,52 @@ if (!patterns.size) {
 }
 
 const staged = process.argv.includes("--staged");
-const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
+const patternNo = (p) => [...patterns].indexOf(p) + 1;
+
+if (process.argv.includes("--history")) {
+  // One pass over every commit: message, then the patch with only added lines kept. Binary diffs show no text.
+  // The lockfile is skipped for the same reason as below.
+  const out = git("log", "--all", "-p", "-U0", "--no-color", "--no-ext-diff", "--format=%x00COMMIT %h%n%B");
+  let commit = "?";
+  let file = "(message)";
+  let skip = false;
+  let hits = 0;
+  let commits = 0;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("\0COMMIT ")) {
+      commit = line.slice(8);
+      file = "(message)";
+      skip = false;
+      commits++;
+      continue;
+    }
+    let text = null;
+    if (line.startsWith("diff --git ")) {
+      file = line.replace(/^diff --git a\/.* b\//, "");
+      skip = file === "package-lock.json";
+      text = line; // paths are published too
+    } else if (file === "(message)") {
+      text = line;
+    } else if (line.startsWith("+") && !line.startsWith("+++")) {
+      text = line.slice(1);
+    }
+    if (text === null || skip) continue;
+    for (const p of patterns) {
+      if (text.includes(p)) {
+        hits++;
+        // Show where, not what: the matched value itself is private.
+        console.error(`  ${commit} ${file} contains a private value (pattern #${patternNo(p)})`);
+      }
+    }
+  }
+  if (hits) {
+    console.error(`check-privacy --history: ${hits} match${hits === 1 ? "" : "es"} in history. Do not publish.`);
+    process.exit(1);
+  }
+  console.log(`check-privacy --history: ${commits} commit(s) clean (${patterns.size} private patterns checked).`);
+  process.exit(0);
+}
 const files = (staged
   ? git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
   : git("ls-files", "--cached", "--others", "--exclude-standard")).split("\n").filter(Boolean)
@@ -59,7 +106,7 @@ for (const file of files) {
       if (line.includes(p)) {
         hits++;
         // Show where, not what: the matched value itself is private.
-        console.error(`  ${file}:${i + 1} contains a private value (pattern #${[...patterns].indexOf(p) + 1})`);
+        console.error(`  ${file}:${i + 1} contains a private value (pattern #${patternNo(p)})`);
       }
     }
   });
