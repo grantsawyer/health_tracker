@@ -138,7 +138,7 @@ Each phase keeps the app working and ends with a check you can try.
 | 2 ✅ | **Browser platform** | `platform/auth` (GIS), `platform/cache` + `platform/queue` (IndexedDB), `platform/settings` (Drive appData + local fallback). | New unit tests with fake GIS/Drive/IndexedDB pass. **Done 2026-11-08:** `platform/` (idb, cache, queue, drive, settings, auth, browserPlatform + `startRetryLoop`), 34 tests in `tests/unit/browserPlatform.test.ts`. Not wired into the UI yet (phase 3). |
 | 3 ✅ | **Switch the seam** | `src/api.ts` calls `core/` + `platform/` directly instead of `/api/*`. Setup screen becomes client-ID + JavaScript-origin flow; sign-in button uses GIS. Settings export/import. | `npm run dev` works with **no Node server**; browser tests rewritten to mock Google/Drive/OFF endpoints pass. **Built 2026-11-08:** browser backend is the default (`src/api.browser.ts`, `src/browser/runtime.ts`); `npm run dev` is Vite only; server mode via `npm run dev:server-mode`. Settings export/import works in both modes. OFF search uses the legacy endpoint (verified: CORS `*`, frequent 503s, so one retry and a "scan the barcode" hint). 19 browser tests against fakes pass; a smoke test confirmed the real GIS script loads. **Confirmed working by the owner 2026-11-09.** |
 | 4 🟡 | **Multi-user readiness** | Generic defaults + first-run goals card; runtime client-ID override; per-user cache isolation and clear-on-sign-out; docs for adding test users and running your own copy. | A second test account sees only its own data and its own settings. **Built 2026-11-09:** first-run "Set your goals" card on Today (generic defaults; "Bring your goals here" + Connect Drive when sync is paused, so defaults never overwrite goals in Drive); Account → Forget this device (warns with the unsent-entry count); per-account isolation tested with a second account in the browser fakes; README "Sharing it with other people". Owner to verify with a real second test account. |
-| 5 ⏭ | **Hosting** (runbook: §15) | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. |
+| 5 🟡 | **Hosting** (runbook: §15) | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. **Built 2026-11-10** (§15 part A, all six steps): history scans clean, `PAGES_BASE`, production CSP (verified with no violations), `pages.yml`, S6 demo, docs. Waiting on the owner's part B (repo public, Pages source, client ID variable, OAuth origin, live test). |
 | 6 | **Retire the server** | Delete `server/`, `/api` proxy, SQLite, Node-only deps; update README/CLAUDE.md. | Repo is a static app; `~/.health_tracker` no longer used (kept on disk until you delete it). |
 
 ## 10. Trade-offs to accept
@@ -173,8 +173,8 @@ come after phase 3 so they're built once, on the browser seam, rather than twice
 | S3 | **Daily `.date` filter fallback:** if a daily-summary list returns zero rows while the same range has rollup data, retry once with the camelCase union name (`dailyRestingHeartRate.date`) and remember which style the account accepts. | We verified snake_case live, but HealthLog saw snake_case return 200 with zero rows on some accounts. Cheap insurance; stays in `core/healthClient.ts`. | With S1 | planned |
 | S4 | **Connections:** predefined, interpretable pairs including food → next-day sleep / resting heart rate (our unique data). Pearson on ≥5 matched days, "tentative" under 8, lagged pairs labelled "next day", always described as association, never cause. | Others show lagged correlations; none can use nutrition. | After S1 | planned |
 | S5 | **Incremental sync:** store per-day records in IndexedDB, refetch only the last 3 days (overlap catches late sleep/workouts) plus any gap; paint cached data first, then revalidate. | Cuts cold-load requests (rollup caps make long ranges expensive) and makes the app instant on reopen. Replaces range-keyed TTL entries for daily data. | After phase 3 (core/dataService + platform/cache) | planned |
-| S6 | **Demo mode:** reuse `tests/e2e/mockApi.ts`'s synthetic data as a "Try the demo" mode with no sign-in. | A public demo for the Pages site, and screenshots that can never contain personal data. | Phase 5 | planned |
-| S7 | **(Partly done 2026-11-10: `scripts/check-secrets.mjs` + `.github/workflows/secret-scan.yml`, after the agent-settings leak report.)** **History-wide hygiene check in CI:** a GitHub Actions job that scans every commit for forbidden paths (`.env`, `*.db`, `samples/`, tokens) and credential signatures (`GOCSPX-`, `ya29.`, `1//`, private keys). | The repo becomes public in phase 5. `check:privacy` stays the local gate (its patterns live outside the repo); CI catches generic leaks. | Phase 5 (before the repo goes public) | planned |
+| S6 | **Demo mode:** a "Try the demo" mode with no sign-in, on synthetic data. | A public demo for the Pages site, and screenshots that can never contain personal data. | Phase 5 | **done 2026-11-10** (`src/demo/`, `?demo`) |
+| S7 | **(Partly done 2026-11-10: `scripts/check-secrets.mjs` + `.github/workflows/secret-scan.yml`, after the agent-settings leak report.)** **History-wide hygiene check in CI:** a GitHub Actions job that scans every commit for forbidden paths (`.env`, `*.db`, `samples/`, tokens) and credential signatures (`GOCSPX-`, `ya29.`, `1//`, private keys). | The repo becomes public in phase 5. `check:privacy` stays the local gate (its patterns live outside the repo); CI catches generic leaks. | Phase 5 (before the repo goes public) | **done 2026-11-10** (plus `check-privacy --history` for the owner's private values; the deploy workflow runs the secret scan first) |
 | S8 | **Client ID in the bundle:** the browser build ships `VITE_GOOGLE_CLIENT_ID` in its JavaScript by design (it isn't secret). It comes from a GitHub Actions variable, never a committed file, so `check:privacy` keeps treating it as private in the repo. | Avoids a false "leak" alarm and documents the decision. | Phase 3/5 | decided |
 | S9 | **Keep the raw `exerciseType`** when it doesn't map to a known activity, and show it instead of "Other". | Lossless; small. | After phase 3 | planned |
 
@@ -293,6 +293,35 @@ URL signs in, loads dashboards, connects Drive, and logs a food entry on both.
      demo.
    - **CLAUDE.md:** the handoff.
    - **This plan:** status, with phase 5 marked built.
+
+### A. Outcome (2026-11-10)
+
+All six steps are built and committed (not pushed):
+- **A1 (scans):** `npm run check:privacy:history` (new: every commit message, path and added line against the private
+  patterns; reports commit + file, never the value) and `npm run check:secrets:history` are both **clean** over all
+  9 commits. A planted pattern confirmed the scanner catches diff lines and commit messages.
+- **A2 (base):** `base: process.env.PAGES_BASE ?? "/"`; no root-absolute asset paths in `src/`.
+- **A3 (CSP):** in `vite.config.ts` (`CSP`), injected only by `vite build`, right after `<meta charset>`. Changes
+  from the draft:
+  - `media-src 'self' blob:` added (camera preview);
+  - `connect-src` lists `world.openfoodfacts.org` only (the browser never calls search-a-licious).
+
+  Verified with `vite preview` + Playwright and the e2e fakes:
+  - every tab, the add-food panel, OFF search, and the sign-in and setup screens: no violations;
+  - a negative control (fetch to another host) was caught.
+
+  Not covered: the real GIS pop-up (Google's documented CSP entries are in), so watch the console on the first live
+  sign-in.
+- **A4 (workflow):** `.github/workflows/pages.yml`: `scan` → `build` (typecheck, unit tests, Pages build) →
+  `deploy`; Pages permissions on the deploy job only.
+- **A5 (demo):** `src/demo/`:
+  - **How it works:** `?demo` makes `runtime()` load `demoRuntime` (dynamic import, own ~17 kB chunk). It's the real
+    `core/` on a Platform whose `fetch` (`demoFetch.ts`) answers Google Health + OFF from a seeded generator
+    (`data.ts`: a year of days, the same on every load).
+  - **Storage:** in-memory cache, settings and food log; no queue.
+  - **UI:** banner with Exit demo; "Try the demo" card on the setup, sign-in and sign-in-again screens.
+  - **Tests:** `tests/unit/demo.test.ts`, `tests/e2e/demo.spec.ts`.
+- **A6 (docs):** README (live URL, demo, Hosting section, origins, history scan), CLAUDE.md handoff, this plan.
 
 ### B. Owner actions, in this order
 

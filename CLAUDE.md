@@ -5,8 +5,9 @@ food logging written back to Google Health. Single user (the owner). See README.
 
 ## Session handoff (start here)
 
-**State as of 2026-11-10. Next: phase 5 (hosting on GitHub Pages). Follow `docs/browser-migration-plan.md` §15,
-a step-by-step runbook with Claude's pre-flight steps (A1–A6) and the owner's actions (B1–B6).**
+**State as of 2026-11-10 (late). Phase 5 (hosting) part A is built: `docs/browser-migration-plan.md` §15 "A. Outcome".
+Next: the owner's actions B1–B6 there (check the old commit is gone, make the repo public, Pages source, client ID
+variable, OAuth origin), then Claude pushes when asked and helps with the live test.**
 
 - **Running it:** the app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. The old
   local server remains as a fallback until phase 6: `npm run dev:server-mode` (`VITE_BACKEND=server`).
@@ -14,15 +15,19 @@ a step-by-step runbook with Claude's pre-flight steps (A1–A6) and the owner's 
   Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
   account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (still **private**; the runbook covers
   going public safely); keep the server until phase 6.
-- **Remote:** `origin/main` = `787bad9` (pushed 2026-11-10). Local `main` is one commit ahead (this handoff and
-  the phase 5 runbook, not pushed). Check `git log origin/main..main` at the start.
+- **Remote:** `origin/main` = `787bad9` (pushed 2026-11-10). Local `main` is ahead by the runbook commit and the
+  phase 5 commits (history scan, base + CSP, Pages workflow, demo, docs), **not pushed**. The first push to `main`
+  after B2–B4 triggers the Pages deploy. Check `git log origin/main..main` at the start.
+- **Hosting:** `.github/workflows/pages.yml` (scan → typecheck + unit tests + `PAGES_BASE=/health_tracker/ vite
+  build` → deploy). CSP lives in `vite.config.ts` (`CSP`), production builds only: any new external host must be
+  added there. Demo: `?demo` (`src/demo/`).
 - **Git rules:** commit directly to `main` (owner's instruction); **push only when the owner asks**.
 - **Pre-commit hook:** `.githooks/pre-commit` runs on every commit (enabled via `core.hooksPath` by `npm install` /
   `npm run hooks:install`). It runs `scripts/check-secrets.mjs --staged` (agent folders, credentials, passwords in
   commands) and `scripts/check-privacy.mjs --staged` (owner's private values).
 - **Before committing, also run** `npm run typecheck` and `npm run build`. CI runs `secret-scan.yml` (full-history
   secret scan) on every push.
-- **Tests:** `npm test` (238 unit) and `npm run test:e2e` (37 browser, serverless app against in-browser fakes in
+- **Tests:** `npm test` (243 unit) and `npm run test:e2e` (39 browser, serverless app against in-browser fakes in
   `tests/e2e/fakeBackend.ts`). The owner prefers that tests aren't run unless asked. Running the relevant ones when
   adding or changing tests is expected.
 - **Open owner items:**
@@ -33,7 +38,7 @@ a step-by-step runbook with Claude's pre-flight steps (A1–A6) and the owner's 
   - **Parent repo:** `price-tracker-extension`, branch `audit/codebase-remediation-f0123`. Commit `120076c4`
     (tracked agent `.gitignore`; local ignore list moved to `.git/info/exclude`) is committed but **not pushed**.
 - **Scope additions:** S1–S9 (plan §12) after hosting: S1 recovery vitals (HRV, SpO2, breathing rate, skin
-  temperature, VO2 max; no new scopes) is the most valuable. S7 is mostly done; S8 is decided.
+  temperature, VO2 max; no new scopes) is the most valuable. S6 and S7 are done; S8 is decided.
 - **History:** the rewrite was pushed 2026-11-08 (`28d4e58` removed). The runbook's step B1 checks GitHub no longer
   serves it before going public.
 
@@ -133,6 +138,9 @@ a step-by-step runbook with Claude's pre-flight steps (A1–A6) and the owner's 
   - `browser/runtime.ts`: client ID (`health-tracker:client-id` in localStorage, else `VITE_GOOGLE_CLIENT_ID`),
     IndexedDB, GIS, `configurePlatform`, retry loop. `ensureSynced` pulls Drive settings once per account, waits at
     most 4 s, and is shared by concurrent callers. `login()` must call GIS synchronously inside the click.
+  - `demo/` (S6): `mode.ts` (`?demo`, tiny, main bundle), `demoRuntime.ts` (in-memory Platform, stand-in sign-in;
+    loaded by a dynamic import from `runtime.ts`), `demoFetch.ts` (answers Google Health + OFF in live shapes),
+    `data.ts` (seeded synthetic generator, a year of data). New screens with new data needs: extend `demoFetch`.
   - `SettingsCard.tsx` + `settingsTransfer.ts`: Drive sync status, settings export/import (goals, layout,
     favorite templates; favorites deduplicated on import).
   - `viz/`: hand-rolled SVG charts following the dataviz skill (ColumnChart stacked/single, LineChart

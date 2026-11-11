@@ -18,6 +18,14 @@ client ID only, no secret) and calls Google directly. The access token lives in 
 IndexedDB; settings sync through a hidden file in your own Google Drive (`drive.appdata`, which can't
 see your other files). See `docs/browser-migration-plan.md`.
 
+**Live:** <https://grantsawyer.github.io/health_tracker/> (GitHub Pages; see [Hosting](#hosting-github-pages)).
+Signing in there needs a Google account that's on the project's test-user list (see
+[Sharing it with other people](#sharing-it-with-other-people)).
+
+**Demo:** <https://grantsawyer.github.io/health_tracker/?demo>, or **Try the demo** on the setup and sign-in
+screens: the whole app on synthetic data, with no Google account. Nothing is sent anywhere and nothing is saved;
+a "Demo data" banner shows on every screen. The demo lives in `src/demo/` and loads only when used.
+
 The old **local server** (Node + Hono, client secret + 7-day refresh token in `~/.health_tracker/`)
 still works as a fallback until migration phase 6: `npm run dev:server-mode`.
 
@@ -44,7 +52,8 @@ The steps, for reference:
    `nutrition.writeonly`, `health_metrics_and_measurements.readonly`, `profile.readonly`) and
    `https://www.googleapis.com/auth/drive.appdata`.
 7. **OAuth client:** Clients → Create client → **Web application**. Under **Authorized JavaScript
-   origins** add `http://localhost:5173` (and later your hosted URL). No redirect URI is needed.
+   origins** add `http://localhost:5173` and, for the hosted app, `https://grantsawyer.github.io` (an origin is
+   scheme + host only: no path, no trailing slash). No redirect URI is needed.
    *Already have a client from the server version?* Add the origin to it: the same client ID keeps
    your earlier entries editable.
 8. **Give the client ID to the app:** the in-app setup form.
@@ -84,7 +93,9 @@ browser's copy of your settings and any food entries that haven't reached Google
 ```sh
 npm install
 npm run dev              # http://localhost:5173, no server
-npm run build            # static files in dist/ (host anywhere; phase 5 adds GitHub Pages)
+npm run build            # typecheck everything + static files in dist/ (host anywhere)
+PAGES_BASE=/health_tracker/ npx vite build   # what the Pages workflow builds
+npx vite preview --base /health_tracker/     # serve that build locally (with its CSP)
 ```
 
 Server mode (fallback until phase 6; uses `~/.health_tracker/.env` with a client secret and the
@@ -97,6 +108,28 @@ VITE_BACKEND=server npm run build && npm start   # single process on http://loca
 
 Moving settings between the two: **Account → Your settings → Export settings** in one, **Import
 settings** in the other (goals, Today layout, favorites; no health data).
+
+## Hosting (GitHub Pages)
+
+`.github/workflows/pages.yml` deploys on every push to `main` (or by hand from the Actions tab):
+
+1. **Secret scan** of all history (`check-secrets --history`); nothing deploys if it fails.
+2. **Build:** `npm ci`, typecheck, unit tests, then `vite build` with `PAGES_BASE=/health_tracker/` (the repo path;
+   routing is hash-only, so no 404 fallback page) and `VITE_GOOGLE_CLIENT_ID` from the repository **variable**
+   `GOOGLE_CLIENT_ID`. The client ID ships in the page by design, so it's a variable, not a secret; it's never
+   committed (`check:privacy` treats the real one as private).
+3. **Deploy** with `actions/deploy-pages`.
+
+One-time setup: Settings → Pages → Source **GitHub Actions**; Settings → Secrets and variables → Actions →
+Variables → `GOOGLE_CLIENT_ID`; and `https://grantsawyer.github.io` in the OAuth client's Authorized JavaScript
+origins. Free Pages needs a public repository; run `npm run check:privacy:history` before making it public.
+
+Production builds carry a **Content Security Policy** (`<meta>`, since Pages can't send headers; defined in
+`vite.config.ts`): scripts only from the app and Google's sign-in script, connections only to Google Health,
+googleapis (userinfo, Drive), Google sign-in and `world.openfoodfacts.org`, fonts from Google Fonts. Tokens live
+in the page, so this limits where injected content could send them. Dev builds have none (Vite injects inline
+scripts there). If a new feature calls another host, add it there and check `npx vite preview` for CSP errors in
+the console.
 
 ## Tests
 
@@ -130,6 +163,7 @@ To run the same checks on the whole working tree, or on every commit ever made:
 ```sh
 npm run check:privacy           # check-secrets + private values, working tree
 npm run check:secrets:history   # every commit (also runs in GitHub Actions on each push)
+npm run check:privacy:history   # private values in every commit message, path and added line (before going public)
 ```
 
 The private-values check fails if any tracked or new file contains a private value. The values are listed in
@@ -162,6 +196,7 @@ To fully disconnect: click **Sign out** (revokes the token at Google), or delete
 
 ## Security notes
 
+- Hosted builds have a Content Security Policy (see [Hosting](#hosting-github-pages)).
 - Browser mode: no client secret exists; the access token (about an hour) is kept in memory and the
   tab's `sessionStorage`, never `localStorage`. Sign-out revokes it at Google and clears cached health
   data; queued food entries stay until sent or discarded. The browser retries queued entries only while
