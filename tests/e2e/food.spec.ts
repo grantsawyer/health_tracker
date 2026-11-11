@@ -287,11 +287,18 @@ test("entry rows: one-line names, icon buttons, macro bars before the name and d
   const text = (await name.boundingBox())!;
   expect(bars.x).toBeGreaterThanOrEqual(time.x + time.width);
   expect(bars.x + bars.width).toBeLessThanOrEqual(text.x);
-  // …with equal gaps on both sides: time text → bars and bars → title text.
-  const gaps = await row.evaluate((li) => {
-    const textBox = (sel: string) => { const r = document.createRange(); r.selectNodeContents(li.querySelector(sel)!); return r.getBoundingClientRect(); };
-    const b = li.querySelector(".macro-bars")!.getBoundingClientRect();
-    return [b.left - textBox(".entry-time").right, textBox(".entry-name").left - b.right];
+  // The time column fits the widest time ("10:00 AM") on one line, then a 14px gap to the bars.
+  const timeCol = await row.evaluate((li) => {
+    const el = li.querySelector(".entry-time") as HTMLElement;
+    const probe = el.cloneNode() as HTMLElement;
+    probe.textContent = "10:00 AM";
+    Object.assign(probe.style, { position: "absolute", width: "auto", visibility: "hidden" });
+    li.appendChild(probe);
+    const widest = probe.getBoundingClientRect().width;
+    probe.remove();
+    return { col: el.getBoundingClientRect().width, widest, gap: li.querySelector(".macro-bars")!.getBoundingClientRect().left - el.getBoundingClientRect().right };
   });
-  expect(Math.abs(gaps[0]! - gaps[1]!)).toBeLessThan(1);
+  expect(timeCol.col).toBeGreaterThanOrEqual(timeCol.widest);
+  expect(timeCol.col - timeCol.widest).toBeLessThan(3);
+  expect(Math.round(timeCol.gap)).toBe(14);
 });
