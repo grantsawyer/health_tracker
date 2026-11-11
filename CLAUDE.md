@@ -15,9 +15,10 @@ variable, OAuth origin), then Claude pushes when asked and helps with the live t
   Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
   account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (still **private**; the runbook covers
   going public safely); keep the server until phase 6.
-- **Remote:** `origin/main` = `787bad9` (pushed 2026-11-10). Local `main` is ahead by the runbook commit and the
-  phase 5 commits (history scan, base + CSP, Pages workflow, demo, docs), **not pushed**. The first push to `main`
-  after B2–B4 triggers the Pages deploy. Check `git log origin/main..main` at the start.
+- **Remote:** the GitHub repo was **deleted and recreated** on 2026-11-11 (it had gone public while GitHub still
+  served the removed commit `28d4e58`; deleting the repo was the only immediate purge). Clean history pushed:
+  `origin/main` = `b60616f`. Repo settings were reset: Pages source and the `GOOGLE_CLIENT_ID` variable must be set
+  again (runbook B3/B4). Check `git log origin/main..main` at the start.
 - **Hosting:** `.github/workflows/pages.yml` (scan → typecheck + unit tests + `PAGES_BASE=/health_tracker/ vite
   build` → deploy). CSP lives in `vite.config.ts` (`CSP`), production builds only: any new external host must be
   added there. Demo: `?demo` (`src/demo/`).
