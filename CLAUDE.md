@@ -5,43 +5,37 @@ food logging written back to Google Health. Single user (the owner). See README.
 
 ## Session handoff (start here)
 
-**State as of 2026-11-08:**
-- The app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. It has the redesign,
-  customizable Today page, inline goal editing, sleep benchmarks, food logging, and Open Food Facts. The old local
-  server remains as a fallback: `npm run dev:server-mode` (`VITE_BACKEND=server`).
-- **Browser-only migration** (`docs/browser-migration-plan.md`) was approved with the recommended options:
-  Google Drive app-data settings sync, GitHub Pages with a public repo, keep the local server until phase 6.
-  **Phase 1 (core extraction) is done:** all logic is in `core/`, and the server is a thin host via
-  `server/platform.ts`.
-- **Phase 2 (browser platform) is done:** `platform/` holds GIS sign-in, the IndexedDB cache and retry queue, and
-  settings in IndexedDB synced to Drive appData.
-- **Phase 3 (switch the seam) is done**, confirmed by the owner 2026-11-09 (settings import and food edits work). `src/api.ts` picks the
-  browser backend (`api.browser.ts` → core + platform) by default. The setup wizard asks for a client ID and a
-  JavaScript origin, sign-in is a GIS pop-up, the Account page has settings export/import plus the Drive sync
-  status, and OFF search uses `cgi/search.pl` with `X-User-Agent`. Verified with fakes only; real sign-in needs
-  the owner to:
-  1. add `http://localhost:5173` under Authorized JavaScript origins on the existing OAuth client;
-  2. enable the Google Drive API and add the `drive.appdata` scope on Data Access;
-  3. paste the client ID once in the setup screen;
-  4. export settings from server mode and import them in browser mode.
-- **Phase 4 (multi-user readiness) is built, awaiting a live check with a second test account** (2026-11-09):
-  - **First-run card** on Today until goals are saved (`goalsSaved()` in core; `saved` in the goals context).
-  - **Drive paused:** when Drive sync is paused, the card offers only "Connect Google Drive", never "Keep these".
-    Saving defaults there would become the newest copy and overwrite the real goals in Drive on the next sync.
-  - **Account → Forget this device** (`logout({ forgetDevice })`) warns with the unsent-entry count.
-  - **Isolation test:** the e2e fake keeps data per account (`switchAccount`, `driveOf`).
-  - **README:** "Sharing it with other people".
-- **Next: phase 5** (GitHub Pages deploy, CSP, Pages origin on the OAuth client, S6 demo mode, S7 CI history
-  scan before the repo goes public).
-- **Commit directly to `main`** in this repo (owner's instruction 2026-11-09). Don't create branches; push only
-  when asked.
-- **Scope additions** S1–S9 (from a review of seven similar apps, 2026-11-08) are in the plan's §12: recovery vitals,
-  BMR-only energy trimming, `.date` filter fallback, food→sleep connections, incremental sync, demo mode, a CI
-  history scan before the repo goes public, client ID in the bundle, raw exercise type. Most land after phase 3.
-- **Tests:** `npm test` (216 unit) and `npm run test:e2e` (19 browser, serverless app against fakes). The owner prefers that tests aren't run
-  unless asked; running them when adding or changing tests is expected.
-- **Before committing:** run `npm run check:privacy`, `npm run typecheck`, and `npm run build`.
-- **History rewrite pushed** 2026-11-08: `origin/main` no longer contains `28d4e58` (force-pushed with lease).
+**State as of 2026-11-10. Next: phase 5 (hosting on GitHub Pages). Follow `docs/browser-migration-plan.md` §15,
+a step-by-step runbook with Claude's pre-flight steps (A1–A6) and the owner's actions (B1–B6).**
+
+- **Running it:** the app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. The old
+  local server remains as a fallback until phase 6: `npm run dev:server-mode` (`VITE_BACKEND=server`).
+- **Migration:** phases 1–3 are done (phase 3 confirmed by the owner 2026-11-09). Phase 4 (first-run goals card,
+  Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
+  account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (still **private**; the runbook covers
+  going public safely); keep the server until phase 6.
+- **Remote:** `origin/main` = `787bad9` (pushed 2026-11-10). Local `main` is one commit ahead (this handoff and
+  the phase 5 runbook, not pushed). Check `git log origin/main..main` at the start.
+- **Git rules:** commit directly to `main` (owner's instruction); **push only when the owner asks**.
+- **Pre-commit hook:** `.githooks/pre-commit` runs on every commit (enabled via `core.hooksPath` by `npm install` /
+  `npm run hooks:install`). It runs `scripts/check-secrets.mjs --staged` (agent folders, credentials, passwords in
+  commands) and `scripts/check-privacy.mjs --staged` (owner's private values).
+- **Before committing, also run** `npm run typecheck` and `npm run build`. CI runs `secret-scan.yml` (full-history
+  secret scan) on every push.
+- **Tests:** `npm test` (238 unit) and `npm run test:e2e` (37 browser, serverless app against in-browser fakes in
+  `tests/e2e/fakeBackend.ts`). The owner prefers that tests aren't run unless asked. Running the relevant ones when
+  adding or changing tests is expected.
+- **Open owner items:**
+  - **Rotate the pasted key:** rotate the Google API key that was pasted into a prompt (its line was deleted from
+    `~/.claude/history.jsonl` on 2026-11-10; backups may still hold it).
+  - **Phase 4:** check it live with a second test account.
+  - **`gh`:** fix it (`brew reinstall gh`; "bad CPU type").
+  - **Parent repo:** `price-tracker-extension`, branch `audit/codebase-remediation-f0123`. Commit `120076c4`
+    (tracked agent `.gitignore`; local ignore list moved to `.git/info/exclude`) is committed but **not pushed**.
+- **Scope additions:** S1–S9 (plan §12) after hosting: S1 recovery vitals (HRV, SpO2, breathing rate, skin
+  temperature, VO2 max; no new scopes) is the most valuable. S7 is mostly done; S8 is decided.
+- **History:** the rewrite was pushed 2026-11-08 (`28d4e58` removed). The runbook's step B1 checks GitHub no longer
+  serves it before going public.
 
 **Owner's local state (not in the repo):** `~/.health_tracker/` holds `.env` (client id and secret),
 `token.enc`/`token.key`, `cache.db`, `app.db` (their goals, layout, favorites, retry queue) and
@@ -167,8 +161,8 @@ food logging written back to Google Health. Single user (the owner). See README.
   `energyFromFat`, `nutrients[]` ({nutrient, quantity g}), `mealType`
   (BREAKFAST/LUNCH/DINNER/SNACK), `serving` ({foodMeasurementUnit, amount}), `food` (resource
   name). **Logs from anonymous food are not editable**, so prefer creating a private `Food` first.
-- Unconfirmed: which data types accept `create`. Verify a nutrition write early in Phase 2.
-  Use the Data explorer “Write test food entry” button, then query Food log with “Written by this app”.
+- `nutrition-log` accepts `create` / `patch` / `batchDelete` (verified live 2026-11-08). The Data explorer's
+  "Write test food entry" button is still there for checking a new account.
 - **List filter prefix is the snake_case data type id** (`nutrition_log.interval.civil_start_time`,
   `daily_resting_heart_rate.date`), verified live 2026-11-07. The camelCase union field is rejected
   with `INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION`, despite the docs' `dailyHeartRateVariability` example.
@@ -293,16 +287,18 @@ Adapted, not copied: no Google branding.
   quick-add edits, or the retry queue's already-written check each fails the suite.
 - Owner preference (project memory): don't run test suites unless asked.
 
-## Phases
+## Original build phases (server era, 2026-11-07/08; not the migration phases)
+
+The numbering below predates `docs/browser-migration-plan.md`; for current work use the migration phases.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Google Cloud project, consent screen, OAuth client, `~/.health_tracker/.env` (owner) | done |
 | 1 | Repo skeleton, OAuth + encrypted tokens, `/api/status`, connection page, in-app setup wizard | done (owner connected 2026-11-07) |
 | 2 | Typed dataPoints client, SQLite cache, raw-data Data explorer | done (verified live 2026-11-07) |
-| 3 | Dashboards: Today, Fitness, Sleep, Body (`/api/summary`, 7/30/90-day ranges) | built; owner said keep going 2026-11-08 |
-| 4 | Food tab: day log by meal, add from Recent / My foods / Quick add, edit, delete, nutrition trends | **built, awaiting owner test** (API paths verified live; UI driven without saving) |
-| 5 | Open Food Facts search + barcode (typed or webcam), favorites, retry queue. PWA/mobile skipped by owner. | **built, awaiting owner test** (queue verified live with simulated failures; UI driven without logging) |
+| 3 | Dashboards: Today, Fitness, Sleep, Body (`/api/summary`, 7/30/90-day ranges) | done |
+| 4 | Food tab: day log by meal, add from Recent / My foods / Quick add, edit, delete, nutrition trends | done (in daily use) |
+| 5 | Open Food Facts search + barcode (typed or webcam), favorites, retry queue. PWA/mobile skipped by owner. | done (in daily use) |
 
 Defaults chosen 2026-11-07 (owner may revise): accept weekly re-auth; localhost only; Open Food
 Facts deferred to Phase 5.

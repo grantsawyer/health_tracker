@@ -2,7 +2,7 @@
 
 **Status:** approved 2026-11-08 with the recommended options (Drive settings sync, GitHub Pages with a public repo,
 keep the local server until phase 6). **Phases 1–3 done** (phase 3 confirmed by the owner 2026-11-09);
-**phase 4 built**, awaiting a live check with a second test account; phase 5 (hosting) next. Scope additions from a review of
+**phase 4 built**, awaiting a live check with a second test account; **phase 5 (hosting) next: see the §15 runbook.** Scope additions from a review of
 similar apps are in §12.
 **Goal:** run without any server, local or hosted. The app is a static website (e.g. GitHub Pages) that talks
 directly to Google Health from the browser. Each person who opens it signs in with their own Google account and
@@ -138,7 +138,7 @@ Each phase keeps the app working and ends with a check you can try.
 | 2 ✅ | **Browser platform** | `platform/auth` (GIS), `platform/cache` + `platform/queue` (IndexedDB), `platform/settings` (Drive appData + local fallback). | New unit tests with fake GIS/Drive/IndexedDB pass. **Done 2026-11-08:** `platform/` (idb, cache, queue, drive, settings, auth, browserPlatform + `startRetryLoop`), 34 tests in `tests/unit/browserPlatform.test.ts`. Not wired into the UI yet (phase 3). |
 | 3 ✅ | **Switch the seam** | `src/api.ts` calls `core/` + `platform/` directly instead of `/api/*`. Setup screen becomes client-ID + JavaScript-origin flow; sign-in button uses GIS. Settings export/import. | `npm run dev` works with **no Node server**; browser tests rewritten to mock Google/Drive/OFF endpoints pass. **Built 2026-11-08:** browser backend is the default (`src/api.browser.ts`, `src/browser/runtime.ts`); `npm run dev` is Vite only; server mode via `npm run dev:server-mode`. Settings export/import works in both modes. OFF search uses the legacy endpoint (verified: CORS `*`, frequent 503s, so one retry and a "scan the barcode" hint). 19 browser tests against fakes pass; a smoke test confirmed the real GIS script loads. **Confirmed working by the owner 2026-11-09.** |
 | 4 🟡 | **Multi-user readiness** | Generic defaults + first-run goals card; runtime client-ID override; per-user cache isolation and clear-on-sign-out; docs for adding test users and running your own copy. | A second test account sees only its own data and its own settings. **Built 2026-11-09:** first-run "Set your goals" card on Today (generic defaults; "Bring your goals here" + Connect Drive when sync is paused, so defaults never overwrite goals in Drive); Account → Forget this device (warns with the unsent-entry count); per-account isolation tested with a second account in the browser fakes; README "Sharing it with other people". Owner to verify with a real second test account. |
-| 5 | **Hosting** | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. |
+| 5 ⏭ | **Hosting** (runbook: §15) | GitHub Actions deploy to Pages; CSP; add the Pages origin to the OAuth client. | The live URL works on Mac and phone. |
 | 6 | **Retire the server** | Delete `server/`, `/api` proxy, SQLite, Node-only deps; update README/CLAUDE.md. | Repo is a static app; `~/.health_tracker` no longer used (kept on disk until you delete it). |
 
 ## 10. Trade-offs to accept
@@ -219,10 +219,98 @@ Notes for later phases:
   they didn't await async core calls (a phase 1 regression).
 - GIS defaults `include_granted_scopes` to true; the browser sets it to false (same rule as the server's OAuth).
 
-## 14. Decisions needed
+## 14. Decisions (made 2026-11-08)
 
-1. **Settings sync:** Google Drive app data, synced across devices (recommended), or local-only per browser?
-2. **Hosting:** GitHub Pages with the repo made public (recommended), or Netlify/Cloudflare Pages to keep it
-   private?
-3. **The local server during migration:** keep it until phase 6 (recommended), or retire it as soon as phase 3
-   works?
+1. **Settings sync:** Google Drive app data, synced across devices. *(Chosen; Drive needs its own token and a
+   separate click, see §3.)*
+2. **Hosting:** GitHub Pages with the repo made public. *(Chosen; the repo is still **private** as of 2026-11-10.)*
+3. **Local server:** kept until phase 6. *(Chosen.)*
+
+## 15. Phase 5 runbook (hosting): start here in the next session
+
+**Goal:** the app at `https://grantsawyer.github.io/health_tracker/`, working on Mac and phone. Done when the live
+URL signs in, loads dashboards, connects Drive, and logs a food entry on both.
+
+**State going in (2026-11-10):**
+- **Phases:** 1–3 done; phase 4 built (awaiting a live second-account check).
+- **Remote:** `origin/main` is `787bad9`, and the repo is **private**.
+- **Secret protection already in place:**
+  - `scripts/check-secrets.mjs`: agent folders and credentials;
+  - `.githooks/pre-commit`: runs that check and the private-values check on every commit;
+  - `.github/workflows/secret-scan.yml`: scans all of history on every push.
+- **S7:** mostly done; see step A1.
+
+### A. Pre-flight, done by Claude (commit each step to `main`; push only when the owner says)
+
+1. **Private-values history scan.** `check-privacy.mjs` scans only the working tree or the staged content. Add a
+   `--history` mode: every line added in every commit, checked against `~/.health_tracker/private-patterns.txt` and
+   the real client ID and secret, printing commit, file and line but never the value. Run it, plus
+   `npm run check:secrets:history`. Both must be clean before the repo goes public; if not, stop and tell the owner
+   (a fix means another history rewrite).
+2. **Base path.**
+   - **Config:** in `vite.config.ts`, set `base` from an env var, e.g. `base: process.env.PAGES_BASE ?? "/"`, and build
+     with `PAGES_BASE=/health_tracker/`.
+   - **Routing:** it's hash-only (`#today`), so no 404 fallback is needed.
+   - **Sign-in origin:** GIS checks only the origin (`https://grantsawyer.github.io`, no path).
+3. **Content Security Policy, production builds only.** Vite's dev server injects inline scripts (the React refresh
+   preamble), so inject a `<meta http-equiv="Content-Security-Policy">` only when `command === "build"`, through a
+   small `transformIndexHtml` plugin. Draft (re-check GIS's CSP guidance when implementing):
+   ```
+   default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+   script-src 'self' https://accounts.google.com/gsi/client;
+   frame-src https://accounts.google.com/gsi/;
+   style-src 'self' https://fonts.googleapis.com https://accounts.google.com/gsi/style;
+   font-src https://fonts.gstatic.com;
+   img-src 'self' data: blob:;
+   connect-src 'self' https://health.googleapis.com https://www.googleapis.com https://accounts.google.com/gsi/
+     https://world.openfoodfacts.org;
+   ```
+   - **Inline styles:** React sets styles through the DOM (CSSOM), which CSP doesn't block, so no `'unsafe-inline'`
+     is expected. Verify by running `npx vite preview` and loading every tab in Playwright with a listener for CSP
+     violations.
+   - **Barcode scanning:** it uses `getUserMedia` (not CSP-gated; needs HTTPS, which Pages has).
+4. **Deploy workflow** `.github/workflows/pages.yml`:
+   - **Triggers and permissions:** on push to `main` and `workflow_dispatch`; `permissions: contents: read,
+     pages: write, id-token: write`.
+   - **Steps:** `actions/checkout` → `actions/setup-node` (22) → `npm ci` → `npm run typecheck` → `npm test` →
+     `VITE_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }} PAGES_BASE=/health_tracker/ npx vite build` →
+     `actions/upload-pages-artifact` (`dist`) → `actions/deploy-pages`.
+   - **Why `npx vite build`:** `npm run build` also typechecks the server, which isn't needed for Pages.
+   - **Gating:** keep secret-scan.yml separate, and make deploy depend on a passing scan, either via `needs` in one
+     workflow or by adding the history scan as the first step.
+   - **Client ID:** it comes from a repository **variable**, not a secret, because it ships in the bundle by design
+     (S8). It must never be committed; `check:privacy` treats the real one as private in the repo.
+5. **S6 demo mode.** "Try the demo" on the setup and sign-in screens: the full app on synthetic data, with no Google
+   account.
+   - **No reuse:** `tests/e2e/fakeBackend.ts` runs in Playwright (Node), so the demo can't use it.
+   - **What to build:** a small in-browser demo `Platform` (`src/demo/`) whose `fetch` answers Google Health and
+     Open Food Facts from a synthetic generator, with an in-memory or IndexedDB `demo` user and no GIS or Drive.
+   - **Loading:** load it with a dynamic import, so it stays out of the main bundle.
+   - **Data:** synthetic values only (the privacy rules apply).
+   - **Labelling:** a clear "Demo data" banner.
+6. **Docs.**
+   - **README:** the live URL, how to add a test user, "Authorized JavaScript origins" for the Pages origin, and the
+     demo.
+   - **CLAUDE.md:** the handoff.
+   - **This plan:** status, with phase 5 marked built.
+
+### B. Owner actions, in this order
+
+1. **Check the old commit is gone.** Open `https://github.com/grantsawyer/health_tracker/commit/28d4e58`. If it still
+   loads (GitHub caches unreferenced commits), ask GitHub Support to purge it **before** making the repo public: its
+   tests held real health values.
+2. **Make the repo public** (Settings → General → Danger zone), only after A1 is clean.
+3. **Pages source:** Settings → Pages → Source: **GitHub Actions**.
+4. **Client ID variable:** Settings → Secrets and variables → Actions → **Variables** → `GOOGLE_CLIENT_ID` = the
+   OAuth client ID.
+5. **OAuth origin:** Google Cloud → Clients → Health Tracker → Authorized JavaScript origins: add
+   `https://grantsawyer.github.io`.
+6. **Test:** push (Claude pushes when asked), wait for the Pages deploy, then open the URL on Mac and phone: sign
+   in, Connect Google Drive, log and edit a food entry, scan a barcode with the camera.
+
+### C. Notes for the session
+- **`gh` is broken on this Mac** ("bad CPU type": an Intel build on Apple silicon). `brew reinstall gh` fixes it, and
+  it's needed to watch Actions runs. Until then, use the GitHub website or `curl` against the public API once the
+  repo is public.
+- **OAuth origins:** keep `http://localhost:5173` in Authorized JavaScript origins for local dev.
+- **Server mode:** it doesn't apply to Pages; it stays until phase 6.
