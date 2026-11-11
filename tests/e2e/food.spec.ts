@@ -273,6 +273,12 @@ test("entry rows: one-line names, icon buttons, macro bars before the name and d
   await expect(name).toHaveAttribute("title", long); // full name on hover
   const lineHeight = await name.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height);
   expect((await name.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
+  // Details stay on one line too, even on a phone.
+  await page.setViewportSize({ width: 390, height: 900 });
+  const detail = row.locator(".entry-detail");
+  const detailLine = await detail.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+  expect((await detail.boundingBox())!.height).toBeLessThanOrEqual(detailLine + 1);
+  await page.setViewportSize({ width: 1100, height: 900 });
   await expect(row.getByRole("button", { name: `Edit ${long}` })).toBeVisible();
   await expect(row.getByRole("button", { name: `Delete ${long}` })).toBeVisible();
   // The bars sit after the time and before the name/details.
