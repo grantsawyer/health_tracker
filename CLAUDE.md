@@ -5,13 +5,14 @@ food logging written back to Google Health. Single user (the owner). See README.
 
 ## Session handoff (start here)
 
-**State as of 2026-11-10 (late). Phase 5 (hosting) part A is built: `docs/browser-migration-plan.md` §15 "A. Outcome".
-Next: the owner's actions B1–B6 there (check the old commit is gone, make the repo public, Pages source, client ID
-variable, OAuth origin), then Claude pushes when asked and helps with the live test.**
+**State as of 2026-11-11. Phase 5 (hosting) is done: live at https://grantsawyer.github.io/health_tracker/, tested
+by the owner on Mac and phone. Next: phase 6 (retire the server, plan §9) or the scope additions (S1 recovery vitals
+first, plan §12), as the owner chooses. If sign-in shows `origin_mismatch`, check the OAuth client's Authorized
+JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minutes to apply).**
 
 - **Running it:** the app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. The old
   local server remains as a fallback until phase 6: `npm run dev:server-mode` (`VITE_BACKEND=server`).
-- **Migration:** phases 1–3 are done (phase 3 confirmed by the owner 2026-11-09). Phase 4 (first-run goals card,
+- **Migration:** phases 1–3 and 5 are done (phase 5 live 2026-11-11). Phase 4 (first-run goals card,
   Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
   account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (still **private**; the runbook covers
   going public safely); keep the server until phase 6.
