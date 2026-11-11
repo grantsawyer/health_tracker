@@ -222,10 +222,10 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
                         <ul className="entry-list">
                           {g.entries.map((e) => (
                             <li key={e.id}>
-                              {/* Name over details, then the three macro bars, then kcal + actions (owner layout 2026-11-11). */}
+                              {/* The three macro bars, then name over details, then kcal + actions (owner layout 2026-11-11). */}
                               <span className="entry-time muted">{fmtTime(e.timeLocal)}</span>
-                              <span className="entry-name" title={e.displayName}>{e.displayName}</span>
                               <span className="entry-bars"><MacroSplitBar food={e} /></span>
+                              <span className="entry-name" title={e.displayName}>{e.displayName}</span>
                               <span className="entry-right">
                                 <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
                                 <span className="entry-actions">

@@ -262,7 +262,7 @@ test("each logged food shows its carbs / fat / protein balance", async ({ page }
   expect(heights.map((h) => Math.round(parseFloat(h)))).toEqual([48, 27, 24]);
 });
 
-test("entry rows: one-line names, icon buttons, macro bars between the text and kcal + buttons", async ({ page }) => {
+test("entry rows: one-line names, icon buttons, macro bars before the name and details", async ({ page }) => {
   const long = "Synthetic grain bowl with roasted vegetables, chickpeas, tahini dressing and extra toppings";
   await fakeBackend(page, {
     entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/11", timeLocal: at("12:30"), mealType: "LUNCH", displayName: long, kcal: 610, carbsG: 70, fatG: 25, proteinG: 22, editable: true }],
@@ -275,10 +275,10 @@ test("entry rows: one-line names, icon buttons, macro bars between the text and 
   expect((await name.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
   await expect(row.getByRole("button", { name: `Edit ${long}` })).toBeVisible();
   await expect(row.getByRole("button", { name: `Delete ${long}` })).toBeVisible();
-  // The bars sit between the name/details and kcal + buttons.
-  const text = (await name.boundingBox())!;
+  // The bars sit after the time and before the name/details.
+  const time = (await row.locator(".entry-time").boundingBox())!;
   const bars = (await row.locator(".macro-bars").boundingBox())!;
-  const right = (await row.locator(".entry-right").boundingBox())!;
-  expect(bars.x).toBeGreaterThanOrEqual(text.x + text.width);
-  expect(bars.x + bars.width).toBeLessThanOrEqual(right.x);
+  const text = (await name.boundingBox())!;
+  expect(bars.x).toBeGreaterThanOrEqual(time.x + time.width);
+  expect(bars.x + bars.width).toBeLessThanOrEqual(text.x);
 });

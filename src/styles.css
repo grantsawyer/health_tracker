@@ -277,11 +277,11 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .chev { width: 20px; height: 20px; color: var(--muted); transition: transform .15s; flex: none; }
 .meal-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .entry-list { list-style: none; padding: 0 20px 8px; margin: 0; }
-/* Entry: time | name over details | three macro bars | kcal + icon buttons. The name stays on one line (ellipsis;
+/* Entry: time | three macro bars | name over details | kcal + icon buttons. The name stays on one line (ellipsis;
  * full name in its tooltip). */
 .entry-list li {
-  display: grid; grid-template-columns: 74px minmax(0, 1fr) auto auto; align-items: center; gap: 2px 14px;
-  grid-template-areas: "time name bars right" "time detail bars right"; padding: 10px 0; border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: 74px auto minmax(0, 1fr) auto; align-items: center; gap: 2px 14px;
+  grid-template-areas: "time bars name right" "time bars detail right"; padding: 10px 0; border-top: 1px solid var(--border);
 }
 .entry-time { grid-area: time; font-size: 13px; font-variant-numeric: tabular-nums; }
 .entry-name { grid-area: name; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -326,7 +326,7 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .scanner { display: grid; gap: 8px; }
 .scanner video { width: 100%; max-width: 420px; border-radius: var(--r-md); background: #000; }
 @media (max-width: 640px) {
-  .entry-list li { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "time time time" "name bars right" "detail bars right"; }
+  .entry-list li { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "time time time" "bars name right" "bars detail right"; }
   .pick-list button { flex-direction: column; gap: 2px; }
   .meal-kcal { font-size: 20px; }
 }

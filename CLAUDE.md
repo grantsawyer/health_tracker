@@ -259,8 +259,8 @@ Adapted, not copied: no Google branding.
 - Food log entries carry three small vertical macro bars (`src/food/macroSplit.ts`, `MacroSplitBar.tsx`; owner
   request 2026-11-11, replacing one horizontal proportion bar): carbs · fat · protein in fixed order, each on its own
   track filled to its share of macro calories (4/9/4 kcal/g, like the day summary); exact shares in the label; none
-  for calories-only entries. Entry row grid: time | one-line name (ellipsis, full name in `title`) over details |
-  macro bars | kcal + pencil/trash icon buttons (`aria-label` "Edit <name>" / "Delete <name>"). Entry text lists
+  for calories-only entries. Entry row grid: time | macro bars | one-line name (ellipsis, full name in `title`) over
+  details | kcal + pencil/trash icon buttons (`aria-label` "Edit <name>" / "Delete <name>"). Entry text lists
   macros in the same order as the bars.
 - Sleep schedule goals (2026-11-09): `bedtime` / `wakeTime` are optional clock goals (minutes after midnight,
   0–1439, `CLOCK_GOALS` / `OPTIONAL_GOALS` in shared/goals.ts). A night is on schedule when each set goal is within
