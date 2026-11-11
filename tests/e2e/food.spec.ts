@@ -50,6 +50,8 @@ test("own entries can be edited and deleted; other apps' entries are read-only",
   const tea = page.locator(".entry-list li", { hasText: "Green tea" });
   await expect(tea).toContainText("Read-only");
   await expect(tea.getByRole("button")).toHaveCount(0);
+  // Calories-only entries have no macro bar.
+  await expect(tea.locator(".macro-split")).toHaveCount(0);
 
   await oatmeal.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("Google can't edit quick-add entries in place")).toBeVisible();
@@ -245,4 +247,14 @@ test("macro charts show the goal ± 10% as a target band", async ({ page }) => {
   await expect(carbs.locator(".viz-target")).toHaveCount(1);
   await expect(carbs.locator(".viz-target-label")).toHaveText("Target 248–303 g"); // default goal 275 g
   await expect(carbs.locator(".viz-goal")).toHaveCount(0);
+});
+
+test("each logged food shows its carbs / fat / protein balance", async ({ page }) => {
+  await fakeBackend(page, {
+    entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/9", timeLocal: at("12:00"), mealType: "LUNCH", displayName: "Synthetic wrap", kcal: 330, carbsG: 40, fatG: 10, proteinG: 20, editable: true }],
+  });
+  await page.goto("/#food");
+  const bar = page.locator(".entry-list li", { hasText: "Synthetic wrap" }).getByRole("img", { name: /of calories/ });
+  await expect(bar).toHaveAttribute("aria-label", "Carbs 48% · Fat 27% · Protein 24% of calories");
+  await expect(bar.locator(".macro-split-seg")).toHaveCount(3);
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { anyPlacedByTime, byMealByDay, mealAverages, mealOf } from "../../src/food/meals.js";
 import type { FoodLogEntry } from "../../shared/food.js";
+import { describeSplit, macroSplit } from "../../src/food/macroSplit.js";
 
 const e = (timeLocal: string, mealType: string, kcal: number, carbsG?: number): FoodLogEntry =>
   ({ id: timeLocal, timeLocal, mealType, displayName: "Food", kcal, carbsG, editable: true });
@@ -29,5 +30,19 @@ describe("meals", () => {
     expect(r.days).toBe(2);
     expect(r.meals.map((m) => [m.key, m.perDay, Math.round(m.share)])).toEqual([["BREAKFAST", 400, 53], ["LUNCH", 350, 47], ["DINNER", 0, 0], ["SNACK", 0, 0]]);
     expect(mealAverages([], "kcal")).toMatchObject({ days: 0, meals: [{ perDay: 0, share: 0 }, {}, {}, {}] });
+  });
+});
+
+describe("macroSplit (per-food proportion bar)", () => {
+  it("splits by macro calories (fat counts 9 kcal/g), in carbs · fat · protein order", () => {
+    const s = macroSplit({ carbsG: 40, fatG: 10, proteinG: 20 })!; // 160 + 90 + 80 = 330 kcal
+    expect(s.map((x) => x.key)).toEqual(["carbsG", "fatG", "proteinG"]);
+    expect(s.map((x) => Math.round(x.pct))).toEqual([48, 27, 24]);
+    expect(describeSplit(s)).toBe("Carbs 48% · Fat 27% · Protein 24% of calories");
+  });
+  it("treats a missing macro as zero, and gives nothing when there are no macros", () => {
+    expect(macroSplit({ proteinG: 25 })!.map((x) => x.pct)).toEqual([0, 0, 100]);
+    expect(macroSplit({})).toBeNull();
+    expect(macroSplit({ carbsG: 0, fatG: 0, proteinG: 0 })).toBeNull();
   });
 });

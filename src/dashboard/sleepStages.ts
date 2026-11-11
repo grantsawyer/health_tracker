@@ -55,18 +55,29 @@ export function usualStatus(value: number | undefined, range: TypicalRange | und
   return { tone: "good", text: "Typical" };
 }
 
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
+
 /** Rows for tonight vs the baseline nights. Rows with no minutes tonight or in history are dropped. */
 export function compareStages(night: Night, baseline: Night[]): StageComparison[] {
+  return compareStagesOver([night], baseline);
+}
+
+/**
+ * The same rows for a set of nights (W/M/3M): each stage's average share and minutes over the tracked nights, vs
+ * the baseline. For one night this is exactly compareStages.
+ */
+export function compareStagesOver(nights: Night[], baseline: Night[]): StageComparison[] {
   const base = baseline.filter((b) => b.main);
+  const tracked = nights.filter((n) => n.main);
   return STAGE_ROWS.map((r) => {
-    const pct = stagePct(night, r.key) ?? 0;
+    const pct = mean(tracked.map((n) => stagePct(n, r.key)).filter((p): p is number => p !== undefined)) ?? 0;
     const pcts = base.map((b) => stagePct(b, r.key));
     const mins = base.map((b) => stageMinutes(b, r.key));
     const usual = typicalRange(pcts);
     const present = pcts.filter((p): p is number => p !== undefined);
     return {
       ...r,
-      minutes: stageMinutes(night, r.key),
+      minutes: mean(tracked.map((n) => stageMinutes(n, r.key))) ?? 0,
       pct,
       usual,
       avgPct: present.length ? present.reduce((a, b) => a + b, 0) / present.length : undefined,

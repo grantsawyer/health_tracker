@@ -17,9 +17,9 @@ import type { Period } from "./period";
 import { bedtimeOffset, checkSchedule, describeDiff, minutesFrom, nightsByDate, type Night } from "./sleep";
 import { ScheduleGoalEditor } from "../ui/ScheduleGoalEditor";
 import { SCHEDULE_TOLERANCE_MIN } from "../../shared/goals";
-import { compareStages, efficiencyPct, efficiencySentence } from "./sleepStages";
+import { compareStagesOver, efficiencyPct, efficiencySentence } from "./sleepStages";
 import { INTERRUPTION_MIN, qualityRows } from "./sleepQuality";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CardBoard } from "./CardBoard";
 import { metricById, type MetricDef } from "./cards";
 import { useLayout } from "./useLayout";
@@ -332,7 +332,9 @@ export function SleepView(ctx: ViewCtx) {
 
   return (
     <div className="dash">
-      {isDay && <NightDetail night={night} baseline={baseNights} status={vsGoal(night?.asleep || undefined)} scheduleNote={scheduleNote} />}
+      {isDay
+        ? <NightDetail night={night} baseline={baseNights} status={vsGoal(night?.asleep || undefined)} scheduleNote={scheduleNote} />
+        : <PeriodSleepDetail nights={tracked} baseline={baseNights} status={vsGoal(avgAsleep)} times={avgStart !== undefined && avgEnd !== undefined ? `${fmtClock(avgStart)} – ${fmtClock(avgEnd)}` : undefined} loading={ctx.loading} />}
 
       <div className="dash-grid">
         <SleepQuality nights={isDay ? (night ? [night] : []) : tracked} baseline={baseNights} isDay={isDay} loading={ctx.loading} />
@@ -385,27 +387,63 @@ type NightView = "timeline" | "usual" | "average";
  * with the last 30 nights (dashed box = usual range), or the 30-day averages.
  */
 function NightDetail({ night, baseline, status, scheduleNote }: { night: Night | undefined; baseline: Night[]; status?: Status; scheduleNote?: string }) {
-  const [view, setView] = useState<NightView>("timeline");
   const main = night?.main;
   if (!main || !night) {
     return <section className="viz-card"><h3 className="viz-card-title">Sleep duration</h3><p className="viz-card-sub">No sleep recorded for this night.</p></section>;
   }
   const efficiency = efficiencyPct(night);
-  const rows = compareStages(night, baseline);
+  return (
+    <SleepDetailCard
+      value={fmtDuration(night.asleep)} times={`${main.startLocal.slice(11, 16)} – ${main.endLocal.slice(11, 16)}`}
+      sub={<>You spent {fmtDuration(main.minutesInBed)} in bed, with a sleep efficiency of {efficiency !== undefined ? pctText(efficiency) : "—"}.{" "}{efficiencySentence(night, baseline) ?? ""}</>}
+      note={scheduleNote} status={status} nights={[night]} baseline={baseline} timeline={<SleepTimeline session={main} />} />
+  );
+}
+
+/**
+ * W/M/3M: the same card for the period's tracked nights (average duration, stage shares vs usual, 30-day averages).
+ * No timeline: a hypnogram only makes sense for one night (owner request 2026-11-11).
+ */
+function PeriodSleepDetail({ nights, baseline, status, times, loading }: { nights: Night[]; baseline: Night[]; status?: Status; times?: string; loading: boolean }) {
+  if (!nights.length) {
+    return <section className="viz-card"><h3 className="viz-card-title">Sleep duration</h3><p className="viz-card-sub">{loading ? "Loading…" : "No sleep recorded in this period."}</p></section>;
+  }
+  const meanOf = (xs: (number | undefined)[]) => {
+    const v = xs.filter((x): x is number => x !== undefined);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
+  };
+  const asleep = meanOf(nights.map((n) => n.asleep))!;
+  const inBed = meanOf(nights.map((n) => n.main?.minutesInBed));
+  const efficiency = meanOf(nights.map(efficiencyPct));
+  return (
+    <SleepDetailCard value={fmtDuration(asleep)} unit="on average" times={times}
+      sub={<>Average of {nights.length} night{nights.length === 1 ? "" : "s"}: {inBed !== undefined ? fmtDuration(inBed) : "—"} in bed, with a sleep efficiency of {efficiency !== undefined ? pctText(efficiency) : "—"}.</>}
+      status={status} nights={nights} baseline={baseline} />
+  );
+}
+
+const pctText = (v: number) => `${Math.round(v)}%`;
+
+function SleepDetailCard({ value, unit, times, sub, note, status, nights, baseline, timeline }: {
+  value: string; unit?: string; times?: string; sub: ReactNode; note?: string; status?: Status;
+  nights: Night[]; baseline: Night[];
+  /** One night only: the stage timeline, shown first. Without it the card opens on "Compared with usual". */
+  timeline?: ReactNode;
+}) {
+  const [picked, setView] = useState<NightView>(timeline ? "timeline" : "usual");
+  const view: NightView = !timeline && picked === "timeline" ? "usual" : picked;
+  const rows = compareStagesOver(nights, baseline);
   const history = baseline.filter((b) => b.main).length;
-  const pct = (v: number) => `${Math.round(v)}%`;
+  const views = ([["timeline", "Timeline"], ["usual", "Compared with usual"], ["average", "30-day average"]] as const).filter(([k]) => k !== "timeline" || timeline);
 
   return (
     <section className="viz-card night-card" aria-labelledby="night-h">
       <div className="viz-card-head">
         <div>
           <h3 className="viz-card-title" id="night-h">Sleep duration</h3>
-          <p className="viz-card-value">{fmtDuration(night.asleep)}<small>{main.startLocal.slice(11, 16)} – {main.endLocal.slice(11, 16)}</small></p>
-          <p className="viz-card-sub">
-            You spent {fmtDuration(main.minutesInBed)} in bed, with a sleep efficiency of {efficiency !== undefined ? pct(efficiency) : "—"}.{" "}
-            {efficiencySentence(night, baseline) ?? ""}
-          </p>
-          {scheduleNote && <p className="viz-card-sub">{scheduleNote}</p>}
+          <p className="viz-card-value">{value}{(unit || times) && <small>{[unit?.trim(), times].filter(Boolean).join(" · ")}</small>}</p>
+          <p className="viz-card-sub">{sub}</p>
+          {note && <p className="viz-card-sub">{note}</p>}
         </div>
         <div className="viz-card-actions">
           {status && <Pill tone={status.tone}>{status.text}</Pill>}
@@ -414,17 +452,17 @@ function NightDetail({ night, baseline, status, scheduleNote }: { night: Night |
       </div>
 
       <div className="night-view">
-        {view === "timeline" && <SleepTimeline session={main} />}
+        {view === "timeline" && timeline}
         {view !== "timeline" && (
           <div className="ranges flat stage-bars">
             {rows.map((r) => {
               const usual = r.usual ? { lo: Math.max(0, r.usual.lo), hi: Math.min(100, r.usual.hi) } : undefined;
               return view === "usual" ? (
-                <RangeBar key={r.key} label={r.label} detail={`${pct(r.pct)} · ${fmtDuration(r.minutes)}`} value={r.pct} max={100}
+                <RangeBar key={r.key} label={r.label} detail={`${pctText(r.pct)} · ${fmtDuration(r.minutes)}`} value={r.pct} max={100}
                   color={r.color} range={usual} rangeTint={r.color} status={r.status} />
               ) : (
                 <RangeBar key={r.key} label={r.label}
-                  detail={r.avgPct !== undefined && r.avgMinutes !== undefined ? `${pct(r.avgPct)} · ${fmtDuration(r.avgMinutes)}` : "No history"}
+                  detail={r.avgPct !== undefined && r.avgMinutes !== undefined ? `${pctText(r.avgPct)} · ${fmtDuration(r.avgMinutes)}` : "No history"}
                   value={r.avgPct} max={100} color={r.color} />
               );
             })}
@@ -438,7 +476,7 @@ function NightDetail({ night, baseline, status, scheduleNote }: { night: Night |
       </div>
 
       <div className="meal-chips night-chips" role="group" aria-label="Sleep view">
-        {([["timeline", "Timeline"], ["usual", "Compared with usual"], ["average", "30-day average"]] as const).map(([k, label]) => (
+        {views.map(([k, label]) => (
           <button key={k} className="chip" aria-pressed={view === k} onClick={() => setView(k)}>
             {view === k && <Icon.check />}{label}
           </button>

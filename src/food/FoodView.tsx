@@ -5,6 +5,7 @@ import { ChartCard } from "../viz/ChartCard";
 import { ColumnChart } from "../viz/ColumnChart";
 import { RangeBar } from "../viz/RangeBar";
 import { fmtLongDate, fmtShortDate } from "../viz/scale";
+import { MacroSplitBar } from "./MacroSplitBar";
 import { Icon } from "../ui/icons";
 import type { Status } from "../ui/Pill";
 import { budgetStatus } from "../dashboard/baseline";
@@ -226,9 +227,11 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
                                 <span className="entry-name">{e.displayName}</span>
                                 <span className="muted entry-detail">
                                   {e.serving ? `${+e.serving.amount.toFixed(2)} ${e.serving.label ?? ""} · ` : ""}
-                                  {[e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`, e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`].filter(Boolean).join(" · ")}
+                                  {/* Same order as the macro bar below and the charts: carbs · fat · protein. */}
+                                  {[e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`, e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`].filter(Boolean).join(" · ")}
                                   {!e.editable && e.source ? ` · via ${e.source}` : ""}
                                 </span>
+                                <MacroSplitBar food={e} />
                               </span>
                               <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
                               <span className="entry-actions">

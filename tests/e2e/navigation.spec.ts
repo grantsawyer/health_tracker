@@ -91,3 +91,29 @@ test("Sleep quality bars share one minutes axis", async ({ page }) => {
   const perMinute = data.filter((d) => d.minutes > 0).map((d) => d.frac / d.minutes);
   for (const r of perMinute) expect(r).toBeCloseTo(perMinute[0]!, 3);
 });
+
+test("Sleep duration card: a night has the timeline; a week keeps only the comparison views", async ({ page }) => {
+  await fakeBackend(page, { sleepNights: 35 });
+  await page.goto("/#sleep");
+  const card = page.locator("section[aria-labelledby=night-h]");
+  const views = card.getByRole("group", { name: "Sleep view" });
+  await expect(views.getByRole("button")).toHaveText(["Timeline", "Compared with usual", "30-day average"]);
+
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  await expect(views.getByRole("button")).toHaveText(["Compared with usual", "30-day average"]);
+  await expect(card).toContainText(/Average of 7 nights/);
+  await expect(card).toContainText("on average");
+  await expect(views.getByRole("button", { name: "Compared with usual" })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.locator(".range-row")).toHaveCount(4);
+  await expect(card.locator(".range-target").first()).toBeVisible();
+});
+
+test("Sleep schedule: bedtime at the bottom, wake time at the top; goal bands have no edge lines", async ({ page }) => {
+  await fakeBackend(page, { sleepNights: 10, goals: { steps: 10000, activeZoneMinutes: 22, floors: 10, caloriesBurned: 2000, caloriesEaten: 2000, carbsG: 275, fatG: 78, proteinG: 50, exerciseDaysPerWeek: 5, sleepMinutes: null, bedtime: 23 * 60, wakeTime: 7 * 60 } });
+  await page.goto("/#sleep");
+  const card = page.locator(".viz-card", { has: page.getByRole("heading", { name: "Sleep schedule" }) });
+  const yOf = (label: RegExp) => card.locator("svg text", { hasText: label }).first().evaluate((el) => (el as SVGGraphicsElement).getBBox().y);
+  expect(await yOf(/^Wake goal/)).toBeLessThan(await yOf(/^Bedtime goal/));
+  await expect(card.locator(".viz-target")).toHaveCount(2);
+  await expect(card.locator(".viz-target line")).toHaveCount(0);
+});

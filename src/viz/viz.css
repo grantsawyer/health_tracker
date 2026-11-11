@@ -93,10 +93,9 @@
 .viz-grid line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .viz-baseline { stroke: var(--viz-axis); stroke-width: 1; shape-rendering: crispEdges; }
 .viz-goal { stroke: var(--goal-line); stroke-width: 1.5; opacity: .8; }
-/* Goal target band (macros ±10%, sleep schedule ±30 min): goal-line tint with dashed edges. Distinct from the green
- * "typical range" band (--viz-band), which is about the owner's history, not a goal. */
+/* Goal target band (macros ±10%, sleep schedule ±30 min): a goal-line tint without edge lines (owner request
+ * 2026-11-11). Distinct from the green "typical range" band (--viz-band), which is about the owner's history. */
 .viz-target rect { fill: color-mix(in srgb, var(--goal-line) 14%, transparent); }
-.viz-target line { stroke: var(--goal-line); stroke-width: 1; stroke-dasharray: 4 3; opacity: .75; }
 .viz-target text { fill: var(--viz-ink-2); font-size: 11px; }
 .viz-hit { fill: transparent; cursor: default; outline: none; }
 .viz-col-hover { fill: var(--viz-ink); opacity: 0.06; }

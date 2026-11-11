@@ -7,7 +7,7 @@ describe("toApiError", () => {
   it.each([
     [new BadRequestError("bad range"), 400, "bad_request"],
     [new FoodInputError("Name is required"), 400, "bad_request"],
-    [new NotEditableError("written by another app"), 403, "not_editable"],
+    [new NotEditableError(), 403, "not_editable"],
     [new ReauthRequiredError("no session"), 401, "reauth_required"],
     [new AccountNotLinkedError(), 409, "account_not_linked"],
     [new OffError(429, "slow down"), 429, "food_database"],
@@ -16,7 +16,7 @@ describe("toApiError", () => {
   ])("%o → %i %s", (err, status, key) => {
     const e = toApiError(err);
     expect(e.status).toBe(status);
-    expect(e.body.error).toBe(key);
+    expect(e.body?.error).toBe(key);
     expect(e.message).toBe((err as Error).message);
   });
 });

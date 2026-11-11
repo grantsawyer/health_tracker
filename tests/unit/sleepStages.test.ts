@@ -49,3 +49,19 @@ describe("sleep stage shares", () => {
     expect(efficiencySentence(tonight, [])).toBeUndefined();
   });
 });
+
+describe("compareStagesOver (W/M/3M sleep card)", () => {
+  it("averages each stage's share and minutes over the tracked nights, and equals compareStages for one night", async () => {
+    const { compareStages, compareStagesOver } = await import("../../src/dashboard/sleepStages.js");
+    const mk = (date: string, deep: number, inBed: number) => ({
+      date, asleep: inBed - 30,
+      stages: { deep, light: inBed - deep - 30 - 60, rem: 60, awake: 30, asleep: 0, restless: 0 },
+      main: { minutesInBed: inBed, minutesAsleep: inBed - 30 } as never,
+    });
+    const a = mk("2026-11-01", 60, 400), b = mk("2026-11-02", 100, 500);
+    const deep = compareStagesOver([a, b, { date: "2026-11-03", asleep: 0, stages: a.stages }], []).find((r) => r.key === "deep")!;
+    expect(deep.pct).toBeCloseTo((15 + 20) / 2); // 60/400 and 100/500; the untracked night is ignored
+    expect(deep.minutes).toBe(80);
+    expect(compareStagesOver([a], [b])).toEqual(compareStages(a, [b]));
+  });
+});

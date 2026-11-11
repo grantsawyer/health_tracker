@@ -29,7 +29,8 @@ export interface ScheduleGoal {
 
 /**
  * Sleep schedule: one floating bar per night from bedtime to wake time,
- * time of day on the y-axis (earlier at top). Consistency reads as how level
+ * time of day on the y-axis, bedtime at the bottom and wake time at the top
+ * (the night reads upward, owner request 2026-11-11). Consistency reads as how level
  * the bar ends are. Bars are fully rounded (no baseline). With a goal, a band
  * marks each target time ± the tolerance, nights on schedule get a check, and
  * the tooltip says how early or late each night was.
@@ -56,7 +57,7 @@ export function ScheduleChart({ rows, color, height = 200, goal, onSchedule, not
   const goalEdges = goal ? [goal.start, goal.end].filter((g): g is number => g !== undefined).flatMap((g) => [g - goal.tolerance, g + goal.tolerance]) : [];
   const lo = Math.max(-360, Math.floor(Math.min(...data.map((r) => r.start!), ...goalEdges) / 120) * 120);
   const hi = Math.min(900, Math.ceil(Math.max(...data.map((r) => r.end!), ...goalEdges) / 120) * 120);
-  const y = linear(lo, hi, 0, innerH);
+  const y = linear(lo, hi, innerH, 0); // later times higher up
   const ticks: number[] = [];
   const step = hi - lo > 12 * 60 ? 240 : 120;
   for (let t = lo; t <= hi; t += step) ticks.push(t);
@@ -83,26 +84,25 @@ export function ScheduleChart({ rows, color, height = 200, goal, onSchedule, not
             {goal && ([["start", "Bedtime goal"], ["end", "Wake goal"]] as const).map(([k, name]) => {
               const g = goal[k];
               if (g === undefined) return null;
-              const top = y(g - goal.tolerance), bottom = y(g + goal.tolerance);
+              const top = y(g + goal.tolerance), bottom = y(g - goal.tolerance);
               return (
                 <g key={k} className="viz-target" aria-hidden>
                   <rect x={0} y={top} width={innerW} height={bottom - top} />
-                  <line x1={0} x2={innerW} y1={top} y2={top} />
-                  <line x1={0} x2={innerW} y1={bottom} y2={bottom} />
-                  <text x={innerW - 4} y={k === "start" ? top - 4 : bottom + 12} textAnchor="end">{name} {fmtClock(g)}</text>
+                  {/* Labels sit outside the bars: bedtime's below its band, wake's above. */}
+                  <text x={innerW - 4} y={k === "start" ? bottom + 12 : top - 4} textAnchor="end">{name} {fmtClock(g)}</text>
                 </g>
               );
             })}
             <g clipPath="url(#sched-clip)">
             {rows.map((r, i) =>
               r.start !== undefined && r.end !== undefined ? (
-                <rect key={r.date} x={i * band + (band - barW) / 2} y={y(r.start)} width={barW}
-                  height={Math.max(2, y(r.end) - y(r.start))} rx={barW / 2} fill={color} />
+                <rect key={r.date} x={i * band + (band - barW) / 2} y={y(r.end)} width={barW}
+                  height={Math.max(2, y(r.start) - y(r.end))} rx={barW / 2} fill={color} />
               ) : null,
             )}
             </g>
             {rows.map((r, i) => onSchedule?.[i] && r.start !== undefined && barW >= 14 ? (
-              <g key={`ok-${r.date}`} className="viz-check" transform={`translate(${i * band + band / 2},${y(r.start) + barW / 2})`} aria-hidden>
+              <g key={`ok-${r.date}`} className="viz-check" transform={`translate(${i * band + band / 2},${y(r.start) - barW / 2})`} aria-hidden>
                 <circle r={barW / 2 - 2} fill="var(--viz-surface)" opacity={0.9} />
                 <path d="M-4.5 0.5l3 3 6-6.5" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
               </g>

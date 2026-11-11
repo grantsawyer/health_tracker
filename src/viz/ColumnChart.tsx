@@ -106,8 +106,6 @@ export function ColumnChart(props: {
             {target && (
               <g className="viz-target" aria-hidden>
                 <rect x={0} y={y(target.hi)} width={innerW} height={y(target.lo) - y(target.hi)} />
-                <line x1={0} x2={innerW} y1={y(target.hi)} y2={y(target.hi)} />
-                <line x1={0} x2={innerW} y1={y(target.lo)} y2={y(target.lo)} />
               </g>
             )}
             {rows.map((r, i) => {

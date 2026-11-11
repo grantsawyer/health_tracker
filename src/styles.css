@@ -281,6 +281,10 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .entry-time { font-size: 13px; font-variant-numeric: tabular-nums; }
 .entry-main { display: grid; min-width: 0; }
 .entry-name { overflow-wrap: anywhere; font-weight: 500; }
+/* Per-food macro balance (share of macro calories): carbs · fat · protein, gaps between segments so neighbors
+ * stay distinct without relying on hue alone. Exact shares are in its label/tooltip. */
+.macro-split { display: flex; gap: 2px; height: 6px; width: min(100%, 240px); margin-top: 6px; border-radius: 999px; overflow: hidden; }
+.macro-split-seg { flex: 0 1 0; min-width: 2px; }
 .entry-detail { font-size: 12.5px; }
 .entry-kcal { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .entry-actions { display: flex; gap: 6px; font-size: 12.5px; }
