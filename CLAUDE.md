@@ -58,6 +58,16 @@ food logging written back to Google Health. Single user (the owner). See README.
 
 ## Privacy rules (hard requirement)
 
+- **Coding-agent settings files never get committed.** Claude Code's "Yes, and don't ask again" saves the full
+  approved command, including any secret in it, to `.claude/settings.local.json`, and only ignores that file in the
+  user's global gitignore (other clones don't have it; Apiiro found 1,122 public copies with real secrets, Nov 2026).
+  The repo `.gitignore` covers it, and `scripts/check-secrets.mjs` blocks it even when force-added, along with
+  credential patterns (Google client secrets and tokens, API keys, GitHub/AWS/Anthropic/OpenAI/Slack keys, private
+  keys). Never put a secret on a command line; read it from `~/.health_tracker/.env` instead. Test values must look
+  fake (contain "test", "example", "synthetic", …).
+- `npm run check:privacy` now runs check-secrets first, then the private-values check. CI
+  (`.github/workflows/secret-scan.yml`) runs `check-secrets --history` on every push.
+
 - **Run `npm run check:privacy` before every commit and push.** It scans tracked + untracked files for the
   private literals in `~/.health_tracker/private-patterns.txt` (outside the repo) plus the real client id/secret
   from `.env`. A clean run is required; if it fails, remove the value (never add it to an allow-list in the repo).

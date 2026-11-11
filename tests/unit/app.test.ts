@@ -107,7 +107,7 @@ describe("API error mapping", () => {
 // Last: this replaces the module's credentials for the rest of the file.
 describe("/api/setup/credentials", () => {
   it.each([
-    [{ clientId: "not-a-client", clientSecret: "GOCSPX-abcdefghij" }, /Client ID/],
+    [{ clientId: "not-a-client", clientSecret: "GOCSPX-test-abcdefghij" }, /Client ID/],
     [{ clientId: "123-abc.apps.googleusercontent.com", clientSecret: "short" }, /Client secret/],
     [{ clientId: "123-abc.apps.googleusercontent.com", clientSecret: "has spaces in it" }, /Client secret/],
   ])("rejects %j", async (body, msg) => {
@@ -118,7 +118,7 @@ describe("/api/setup/credentials", () => {
 
   it("saves to an owner-only .env and signs out when the client changes", async () => {
     signIn();
-    const res = await post("/api/setup/credentials", { clientId: "999999999999-newclient.apps.googleusercontent.com", clientSecret: "GOCSPX-new-secret-1" });
+    const res = await post("/api/setup/credentials", { clientId: "999999999999-newclient.apps.googleusercontent.com", clientSecret: "GOCSPX-test-new-secret-1" });
     expect(res.status).toBe(200);
     expect(statSync(ENV_FILE).mode & 0o777).toBe(0o600);
     expect(readFileSync(ENV_FILE, "utf8")).toContain("GOOGLE_CLIENT_ID=999999999999-newclient.apps.googleusercontent.com");
