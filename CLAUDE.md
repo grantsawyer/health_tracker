@@ -5,10 +5,12 @@ food logging written back to Google Health. Single user (the owner). See README.
 
 ## Session handoff (start here)
 
-**State as of 2026-11-11. Phase 5 (hosting) is done: live at https://grantsawyer.github.io/health_tracker/, tested
-by the owner on Mac and phone. Next: phase 6 (retire the server, plan §9) or the scope additions (S1 recovery vitals
-first, plan §12), as the owner chooses. If sign-in shows `origin_mismatch`, check the OAuth client's Authorized
-JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minutes to apply).**
+**State as of 2026-11-11 (late). Phases 5 (hosting) and 6 (server retired) are done; live at
+https://grantsawyer.github.io/health_tracker/. Built since, committed, **not pushed**: S1 recovery vitals (Body tab +
+Today cards), the sleep schedule axis flip, goal bands without edges, the W/M/3M sleep duration card and per-food macro
+bars. The vitals' field names come from Google's reference, not a live response: check them on the owner's account
+first (Data explorer → each `daily-*` type). Next: the owner's live check, then S2–S5 (plan §12). If sign-in shows
+`origin_mismatch`, check the OAuth client's Authorized JavaScript origins.**
 
 - **Running it:** `npm run dev` (Vite only), then http://localhost:5173. There is no server (retired in phase 6,
   2026-11-11).
@@ -30,7 +32,7 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
   commands) and `scripts/check-privacy.mjs --staged` (owner's private values).
 - **Before committing, also run** `npm run typecheck` and `npm run build`. CI runs `secret-scan.yml` (full-history
   secret scan) on every push.
-- **Tests:** `npm test` (243 unit) and `npm run test:e2e` (39 browser, serverless app against in-browser fakes in
+- **Tests:** `npm test` (229 unit) and `npm run test:e2e` (44 browser, serverless app against in-browser fakes in
   `tests/e2e/fakeBackend.ts`). The owner prefers that tests aren't run unless asked. Running the relevant ones when
   adding or changing tests is expected.
 - **Open owner items:**
@@ -41,7 +43,7 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
   - **Parent repo:** `price-tracker-extension`, branch `audit/codebase-remediation-f0123`. Commit `120076c4`
     (tracked agent `.gitignore`; local ignore list moved to `.git/info/exclude`) is committed but **not pushed**.
 - **Scope additions:** S1–S9 (plan §12) after hosting: S1 recovery vitals (HRV, SpO2, breathing rate, skin
-  temperature, VO2 max; no new scopes) is the most valuable. S6 and S7 are done; S8 is decided.
+  temperature, VO2 max; no new scopes) is the most valuable. S1, S6 and S7 are done; S8 is decided. S3 (camelCase `.date` filter fallback) was deliberately not added with S1: snake_case is verified live on the owner account, and the fallback would double requests for every empty vital.
 - **History:** the rewrite was pushed 2026-11-08 (`28d4e58` removed). The runbook's step B1 checks GitHub no longer
   serves it before going public.
 
@@ -216,7 +218,7 @@ Adapted, not copied: no Google branding.
   owner's last 30 nights (the sample says "people like you"; the API has no population data). Pills: Typical =
   good; Higher/Lower than usual = neutral (the sample colors all green, but status green is reserved for good,
   and more REM / less deep isn't inherently good).
-- Today page is customizable: `shared/layout.ts` (22 card ids incl. `stepsRing`; "today" = 12 SLOTS, the ring
+- Today page is customizable: `shared/layout.ts` (27 card ids incl. `stepsRing`; "today" = 12 SLOTS, the ring
   uses 3 (`slotSize`); "week" = 12 cards; layout v2 added the ring as a card, v1 layouts get it prepended),
   defaults, validation), `core/layout.ts` (settings, per user; stale ids cleaned on read),
   `src/dashboard/cards.tsx` (registry: tile + week renderers, availability = any data in last 30 days),
@@ -244,6 +246,19 @@ Adapted, not copied: no Google branding.
   meal + average per meal with share, one metric switch (kcal/carbs/fat/protein). Entries without a meal
   (`ANYTIME`) are placed by time: 4–11 breakfast, 11–15 lunch, 17–21 dinner, else snack (said on the chart). Meal
   colors = `--series-1..4` (validated light/dark, adjacent stacked pairs pass CVD; light slots 3–4 < 3:1 → tables).
+- Recovery vitals (S1, 2026-11-11): `daily-heart-rate-variability`, `daily-oxygen-saturation`,
+  `daily-respiratory-rate`, `daily-sleep-temperature-derivations`, `daily-vo2-max` (list + `.date` filter, scope
+  `health_metrics_and_measurements.readonly`; mapped in `core/summary.ts` `vitalMappers`). `src/dashboard/vitals.ts`
+  defines each once for the Body tab's "Recovery vitals" section (only vitals with data; a note otherwise) and the
+  Today cards (group "Recovery"). Skin temperature = nightly − Google's baseline (else the mean of loaded nights), in
+  °F/°C by the units setting. All vs the owner's typical range.
+- Sleep duration card (2026-11-11): D = one night with Timeline / Compared with usual / 30-day average; W/M/3M =
+  `PeriodSleepDetail` (averages over the period's nights via `compareStagesOver`), no Timeline (owner request).
+- Sleep schedule chart: bedtime at the bottom, wake time at the top (y reversed, owner request 2026-11-11). Goal
+  target bands (schedule, carbs/fat/protein) are a tint only, no dashed edges (owner request).
+- Food log entries carry a macro proportion bar (`src/food/macroSplit.ts`, `MacroSplitBar.tsx`): share of macro
+  calories (4/9/4 kcal/g, like the day summary), carbs · fat · protein, gaps between segments, exact shares in the
+  label; none for calories-only entries. The entry text lists macros in the same order.
 - Sleep schedule goals (2026-11-09): `bedtime` / `wakeTime` are optional clock goals (minutes after midnight,
   0–1439, `CLOCK_GOALS` / `OPTIONAL_GOALS` in shared/goals.ts). A night is on schedule when each set goal is within
   ±`SCHEDULE_TOLERANCE_MIN` (30, a display tolerance) (`checkSchedule` in src/dashboard/sleep.ts; bedtimes from noon

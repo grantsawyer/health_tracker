@@ -1,7 +1,7 @@
 import { addDays } from "../../core/healthClient";
 import {
   DEMO_CLIENT_ID, DEMO_DAYS, DEMO_USER_ID, FOODS, PRODUCTS, UNITS, at, day, exercise, foodName, inRange, localDate, meals, night,
-  offsetOf, scaled, unitName, type DemoFood, type DemoProduct,
+  offsetOf, scaled, unitName, vitals, type DemoFood, type DemoProduct,
 } from "./data";
 
 /**
@@ -160,6 +160,14 @@ export function createDemoFetch(): typeof fetch {
   }
 
   // ── Lists ────────────────────────────────────────────────────────────────
+  /** Recovery vitals: data type → [union field, value fields] in Google's DataPoint shapes. */
+  const VITALS: Record<string, [string, (v: NonNullable<ReturnType<typeof vitals>>) => Loose]> = {
+    "daily-heart-rate-variability": ["dailyHeartRateVariability", (v) => ({ averageHeartRateVariabilityMilliseconds: v.hrvMs })],
+    "daily-oxygen-saturation": ["dailyOxygenSaturation", (v) => ({ averagePercentage: v.spo2.avg, lowerBoundPercentage: v.spo2.lo, upperBoundPercentage: v.spo2.hi })],
+    "daily-respiratory-rate": ["dailyRespiratoryRate", (v) => ({ breathsPerMinute: v.breathing })],
+    "daily-sleep-temperature-derivations": ["dailySleepTemperatureDerivations", (v) => ({ nightlyTemperatureCelsius: v.skinC, baselineTemperatureCelsius: v.skinBaseC })],
+    "daily-vo2-max": ["dailyVo2Max", (v) => ({ vo2Max: v.vo2Max, cardioFitnessLevel: v.fitness, estimated: true })],
+  };
   function list(type: string, from: string, to: string): Point[] {
     if (type === "nutrition-log") {
       return [...logs.values()].filter((p) => {
@@ -172,6 +180,13 @@ export function createDemoFetch(): typeof fetch {
         name: `users/${DEMO_USER_ID}/dataTypes/daily-resting-heart-rate/dataPoints/r${d}`,
         dailyRestingHeartRate: { date: civilDate(d), beatsPerMinute: String(day(d).restingHr) },
       }));
+    }
+    const vital = VITALS[type];
+    if (vital) {
+      return dates(from, to).flatMap((d) => {
+        const v = vitals(d);
+        return v ? [{ name: `users/${DEMO_USER_ID}/dataTypes/${type}/dataPoints/v${d}`, [vital[0]]: { date: civilDate(d), ...vital[1](v) } }] : [];
+      });
     }
     if (type === "sleep") {
       return dates(from, to).flatMap((wake) => {
@@ -233,7 +248,7 @@ export function createDemoFetch(): typeof fetch {
     const path = url.pathname.replace(/^\/v4\//, "");
     if (path === "users/me/identity") return json({ name: "users/me/identity", healthUserId: DEMO_USER_ID, legacyUserId: "DEMO00" });
 
-    const roll = /^users\/me\/dataTypes\/([a-z-]+)\/dataPoints:dailyRollUp$/.exec(path);
+    const roll = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints:dailyRollUp$/.exec(path);
     if (roll && method === "POST") {
       const days = dates(ymd(body!.range.start.date), ymd(body!.range.end.date)).flatMap((d) => {
         const v = rollup(roll[1]!, d);
@@ -242,7 +257,7 @@ export function createDemoFetch(): typeof fetch {
       return json({ rollupDataPoints: days });
     }
 
-    const coll = /^users\/me\/dataTypes\/([a-z-]+)\/dataPoints$/.exec(path);
+    const coll = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints$/.exec(path);
     if (coll && method === "GET") {
       const type = coll[1]!;
       if (type === "food") return json({ dataPoints: [...FOODS.map((f) => foodPoint(f)), foodPoint({ ...FOODS[0]!, id: "9001", name: "Oats (public database)" }, "PUBLIC")] });
@@ -263,7 +278,7 @@ export function createDemoFetch(): typeof fetch {
       return json({ done: true, response: point });
     }
 
-    const del = /^users\/me\/dataTypes\/([a-z-]+)\/dataPoints:batchDelete$/.exec(path);
+    const del = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints:batchDelete$/.exec(path);
     if (del && method === "POST") {
       for (const n of (body!.names ?? []) as string[]) {
         const p = logs.get(asMe(n));

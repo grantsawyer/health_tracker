@@ -48,6 +48,13 @@ export const DATA_TYPES: DataTypeInfo[] = [
   // Health metrics
   { id: "heart-rate", field: "heartRate", label: "Heart rate", kind: "sample", scope: "health_metrics_and_measurements.readonly", rollup: true, rollupMaxDays: 14 },
   { id: "daily-resting-heart-rate", field: "dailyRestingHeartRate", label: "Resting heart rate", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
+  // Recovery vitals (S1): one record per day with a `date`, list only (no dailyRollUp). Field shapes from Google's
+  // DataPoint reference (checked 2026-11-11); not yet seen live.
+  { id: "daily-heart-rate-variability", field: "dailyHeartRateVariability", label: "Heart rate variability", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
+  { id: "daily-oxygen-saturation", field: "dailyOxygenSaturation", label: "Oxygen saturation (SpO2)", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
+  { id: "daily-respiratory-rate", field: "dailyRespiratoryRate", label: "Breathing rate", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
+  { id: "daily-sleep-temperature-derivations", field: "dailySleepTemperatureDerivations", label: "Skin temperature", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
+  { id: "daily-vo2-max", field: "dailyVo2Max", label: "VO2 max", kind: "daily", scope: "health_metrics_and_measurements.readonly", rollup: false },
   { id: "weight", field: "weight", label: "Weight", kind: "sample", scope: "health_metrics_and_measurements.readonly", rollup: true },
   { id: "body-fat", field: "bodyFat", label: "Body fat", kind: "sample", scope: "health_metrics_and_measurements.readonly", rollup: true },
   // Sleep

@@ -9,6 +9,7 @@ import type { MiniTrendProps } from "../viz/MiniTrend";
 import { budgetStatus, goalStatus, rangeStatus } from "./baseline";
 import { S, azmTotal, dash, focusDay, lastWith, pctFill, series, typical, upToAnchor, type Tab, type ViewCtx } from "./ctx";
 import { minutesFrom, nightsByDate, type Night } from "./sleep";
+import { VITALS, fitnessLevel } from "./vitals";
 
 /**
  * Every metric the Today page can show, as a single-day tile ("today") and/or a
@@ -27,7 +28,7 @@ export type WeekContent = Omit<MiniTrendProps, "dates" | "today" | "onOpen" | "t
 export interface MetricDef {
   id: MetricId;
   label: string;
-  group: "Activity" | "Food" | "Heart" | "Sleep" | "Body";
+  group: "Activity" | "Food" | "Heart" | "Recovery" | "Sleep" | "Body";
   tone: Tone;
   icon: () => React.JSX.Element;
   tab: Tab;
@@ -157,6 +158,24 @@ export const METRICS: MetricDef[] = [
     tile: (ctx) => { const l = latest(ctx, (d) => d.restingHr); return { value: l ? fmtBpm(l.value) : dash, sub: rangeStatus(l?.value, typical(ctx, (d) => d.restingHr)).text }; },
     week: (ctx) => { const l = latest(ctx, (d) => d.restingHr); const band = typical(ctx, (d) => d.restingHr); return { label: "Resting heart rate", value: l ? fmtInt(l.value) : dash, unit: l ? " bpm" : undefined, kind: "line", color: S.heart, values: series(ctx, (d) => d.restingHr), band, format: fmtBpm, status: rangeStatus(l?.value, band) }; },
   },
+  // Recovery vitals (S1): latest value vs the owner's typical range; the week card draws the range as a band.
+  ...VITALS.map((v): MetricDef => ({
+    id: v.id, label: v.label, group: "Recovery", tone: v.tone, icon: v.tone === "body" ? Icon.body : Icon.heart, tab: "body",
+    available: (ctx) => allDays(ctx).some((d) => v.pick(ctx)(d) !== undefined),
+    tile: (ctx) => {
+      const pick = v.pick(ctx);
+      const l = latest(ctx, pick);
+      const level = v.id === "vo2Max" ? fitnessLevel(l && ctx.data.days.find((d) => d.date === l.date)?.cardioFitness) : undefined;
+      return { value: l ? v.format(l.value, ctx.units) : dash, sub: level ?? rangeStatus(l?.value, typical(ctx, pick)).text };
+    },
+    week: (ctx) => {
+      const pick = v.pick(ctx);
+      const l = latest(ctx, pick);
+      const band = typical(ctx, pick);
+      const fmt = (x: number) => v.format(x, ctx.units);
+      return { label: v.label, value: l ? fmt(l.value) : dash, kind: "line", color: v.color, values: series(ctx, pick), band, format: fmt, status: rangeStatus(l?.value, band) };
+    },
+  })),
   {
     id: "sleep", label: "Sleep", group: "Sleep", tone: "sleep", icon: Icon.sleep, tab: "sleep",
     available: (ctx) => ctx.data.sleep.length > 0 || (ctx.baseline?.sleep.length ?? 0) > 0,

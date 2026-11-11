@@ -117,3 +117,32 @@ test("Sleep schedule: bedtime at the bottom, wake time at the top; goal bands ha
   await expect(card.locator(".viz-target")).toHaveCount(2);
   await expect(card.locator(".viz-target line")).toHaveCount(0);
 });
+
+test("Recovery vitals: Body shows each vital against the typical range, and they can be Today cards", async ({ page }) => {
+  const fake = await fakeBackend(page, { vitalsDays: 40 });
+  await page.goto("/#body");
+  const section = page.getByRole("region", { name: "Recovery vitals" });
+  await expect(section.locator(".viz-card-title")).toHaveText(["Heart rate variability", "Oxygen saturation (SpO2)", "Breathing rate", "Skin temperature", "Cardio fitness (VO2 max)"]);
+  const vo2 = section.locator(".viz-card", { has: page.getByRole("heading", { name: "Cardio fitness (VO2 max)" }) });
+  await expect(vo2).toContainText("Good cardio fitness.");
+  await expect(vo2).toContainText(/Your typical range/);
+  // Skin temperature is the night's variation from baseline, in °F with imperial units.
+  await expect(section.locator(".viz-card", { has: page.getByRole("heading", { name: "Skin temperature" }) }).locator(".viz-card-value")).toHaveText(/^[+−±]\d\.\d °F$/);
+
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Today", exact: true }).click();
+  await page.getByRole("button", { name: "Customize" }).click();
+  await page.locator(".today-grid .board-add").click();
+  await page.getByRole("region", { name: "Add a card to Today" }).getByRole("button", { name: /^Heart rate variability/ }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.locator(".today-grid .tile-label")).toContainText(["Heart rate variability"]);
+  await expect.poll(() => fake.layout?.today).toContain("hrv");
+  expect(fake.unmocked).toEqual([]);
+});
+
+test("Recovery vitals: an account without them gets a short note, not empty charts", async ({ page }) => {
+  await fakeBackend(page);
+  await page.goto("/#body");
+  const section = page.getByRole("region", { name: "Recovery vitals" });
+  await expect(section).toContainText("No recovery vitals yet");
+  await expect(section.locator(".viz-card")).toHaveCount(0);
+});

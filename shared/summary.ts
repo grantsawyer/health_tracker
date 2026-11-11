@@ -1,5 +1,5 @@
 /**
- * Normalized dashboard data: the contract between server/summary.ts and the
+ * Normalized dashboard data: the contract between core/summary.ts and the
  * dashboards. All values are in metric base units (km, kg, kcal, minutes);
  * the UI converts for display. A missing field means "no data that day",
  * which is not the same as zero.
@@ -16,6 +16,16 @@ export interface DailySummary {
   caloriesOut?: number;
   heartRate?: { avg: number; min: number; max: number };
   restingHr?: number;
+  /** Recovery vitals (S1), from the daily-* summaries Google computes overnight. */
+  hrvMs?: number;
+  spo2Pct?: number;
+  breathingRate?: number;
+  /** Nightly skin temperature and Google's personal baseline, when it sends one (°C). */
+  skinTempC?: number;
+  skinTempBaselineC?: number;
+  /** mL/kg/min, with Google's cardio fitness level (POOR … EXCELLENT) when given. */
+  vo2Max?: number;
+  cardioFitness?: string;
   weightKg?: number;
   bodyFatPct?: number;
   nutrition?: { kcal: number; proteinG?: number; carbsG?: number; fatG?: number; fiberG?: number };

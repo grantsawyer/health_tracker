@@ -19,6 +19,7 @@ import { ScheduleGoalEditor } from "../ui/ScheduleGoalEditor";
 import { SCHEDULE_TOLERANCE_MIN } from "../../shared/goals";
 import { compareStagesOver, efficiencyPct, efficiencySentence } from "./sleepStages";
 import { INTERRUPTION_MIN, qualityRows } from "./sleepQuality";
+import { VITALS, fitnessLevel, type VitalDef } from "./vitals";
 import { useEffect, useState, type ReactNode } from "react";
 import { CardBoard } from "./CardBoard";
 import { metricById, type MetricDef } from "./cards";
@@ -582,6 +583,45 @@ export function BodyView(ctx: ViewCtx) {
           <LineChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, value: fat[i] }))} label="Body fat" color={S.body} format={fmtPct} connectGaps />
         </ChartCard>
       </div>
+      <RecoveryVitals ctx={ctx} />
     </div>
+  );
+}
+
+/**
+ * Recovery vitals (S1): HRV, SpO2, breathing rate, skin temperature and VO2 max, each against the owner's typical
+ * range. Only vitals with any data in the last 30 days or this period are shown (they need a watch worn overnight).
+ */
+function RecoveryVitals({ ctx }: { ctx: ViewCtx }) {
+  const allDays = [...(ctx.baseline?.days ?? []), ...ctx.data.days];
+  const shown = VITALS.filter((v) => allDays.some((d) => v.pick(ctx)(d) !== undefined));
+  return (
+    <section className="dash" aria-labelledby="vitals-h">
+      <h2 className="section-title" id="vitals-h">Recovery vitals</h2>
+      {shown.length === 0 ? (
+        <p className="muted">
+          {ctx.loading ? "Loading…" : "No recovery vitals yet. Google Health records them from a watch or tracker worn overnight."}
+        </p>
+      ) : (
+        <div className="dash-grid two-up">{shown.map((v) => <VitalChart key={v.id} ctx={ctx} def={v} />)}</div>
+      )}
+    </section>
+  );
+}
+
+function VitalChart({ ctx, def }: { ctx: ViewCtx; def: VitalDef }) {
+  const pick = def.pick(ctx);
+  const fmt = (v: number) => def.format(v, ctx.units);
+  const typ = typical(ctx, pick);
+  const latest = lastWith(upToAnchor(ctx), pick);
+  const values = series(ctx, pick);
+  const level = def.id === "vo2Max" ? fitnessLevel(latest && byDate(ctx.data).get(latest.date)?.cardioFitness) : undefined;
+  return (
+    <ChartCard title={def.label} value={latest ? fmt(latest.value) : dash} status={rangeStatus(latest?.value, typ)} loading={ctx.loading}
+      subtitle={[level && `${level} cardio fitness.`, def.about].filter(Boolean).join(" ")}
+      legend={typ ? [{ label: def.label, color: def.color, shape: "line" }, { label: `Your typical range, ${fmt(typ.lo)} to ${fmt(typ.hi)} (last 30 days)`, color: "", shape: "band" }] : undefined}
+      table={table(ctx, [def.label], (_, d) => { const v = d ? pick(d) : undefined; return [v !== undefined ? fmt(v) : dash]; })}>
+      <LineChart today={ctx.today} rows={ctx.dates.map((date, i) => ({ date, value: values[i] }))} label={def.label} color={def.color} format={def.compact ?? fmt} typical={typ} connectGaps />
+    </ChartCard>
   );
 }

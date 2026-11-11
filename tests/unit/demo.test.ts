@@ -44,6 +44,11 @@ describe("demo", () => {
       expect(d.activeMinutes).toBeDefined();
       expect(d.caloriesOut).toBeGreaterThan(1500);
       expect(d.nutrition?.kcal).toBeGreaterThan(0);
+      expect(d.hrvMs).toBeGreaterThan(0);
+      expect(d.spo2Pct).toBeGreaterThan(90);
+      expect(d.breathingRate).toBeGreaterThan(10);
+      expect(d.skinTempC! - d.skinTempBaselineC!).toBeLessThan(1);
+      expect(d.vo2Max).toBeGreaterThan(30);
     }
     expect(past.filter((d) => d.weightKg !== undefined).length).toBeGreaterThan(40); // weighed most days, not all
     expect(s.sleep.length).toBeGreaterThanOrEqual(89);

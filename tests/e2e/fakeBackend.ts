@@ -81,6 +81,8 @@ export interface FakeOptions {
   sleepNights?: number;
   /** With start "signedIn": whether this tab already connected Drive (default: yes, if drive.appdata is granted). */
   driveConnected?: boolean;
+  /** Synthetic recovery vitals (HRV, SpO2, breathing rate, skin temperature, VO2 max) for each of the last N days. */
+  vitalsDays?: number;
 }
 
 export interface FakeRequest {
@@ -177,6 +179,31 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
       wakeDate: wake,
     });
   }
+
+  // ── Synthetic recovery vitals: one record per day, in Google's daily-* shapes ──
+  const vitalFields: Record<string, [string, (i: number) => Record<string, unknown>]> = {
+    "daily-heart-rate-variability": ["dailyHeartRateVariability", (i) => ({ averageHeartRateVariabilityMilliseconds: 40 + (i % 5) })],
+    "daily-oxygen-saturation": ["dailyOxygenSaturation", (i) => ({ averagePercentage: 96 + (i % 3) / 2, lowerBoundPercentage: 93, upperBoundPercentage: 99 })],
+    "daily-respiratory-rate": ["dailyRespiratoryRate", (i) => ({ breathsPerMinute: 14 + (i % 4) / 4 })],
+    "daily-sleep-temperature-derivations": ["dailySleepTemperatureDerivations", (i) => ({ nightlyTemperatureCelsius: 33.8 + ((i % 5) - 2) / 10, baselineTemperatureCelsius: 33.8 })],
+    "daily-vo2-max": ["dailyVo2Max", (i) => ({ vo2Max: 44 + (i % 3) / 2, cardioFitnessLevel: "GOOD" })],
+  };
+  const vitalPoints = (type: string, filter: string) => {
+    const f = vitalFields[type];
+    if (!f) return [];
+    const from = /\s>=\s"([^"]+)"/.exec(filter)?.[1] ?? "";
+    const to = /\s<\s"([^"]+)"/.exec(filter)?.[1] ?? "9999";
+    const out = [];
+    for (let i = 0; i < (opts.vitalsDays ?? 0); i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const date = d.toLocaleDateString("en-CA");
+      if (date < from || date >= to) continue;
+      const [y, m, day] = date.split("-").map(Number);
+      out.push({ name: `users/1234567890/dataTypes/${type}/dataPoints/v${i}`, [f[0]]: { date: { year: y, month: m, day }, ...f[1](i) } });
+    }
+    return out;
+  };
 
   // ── Browser state before the app loads ────────────────────────────────────
   const startMode = opts.start ?? "signedIn";
@@ -312,7 +339,7 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
     const path = req.url.pathname.replace(/^\/v4\//, "");
     if (path === "users/me/identity") return send(route, { name: "users/me/identity", healthUserId: "1234567890" });
 
-    const rollup = /^users\/me\/dataTypes\/([a-z-]+)\/dataPoints:dailyRollUp$/.exec(path);
+    const rollup = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints:dailyRollUp$/.exec(path);
     if (rollup && req.method === "POST") {
       const v = rollupValue(rollup[1]!);
       const days = [];
@@ -341,7 +368,7 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
       return done(route, p);
     }
 
-    const list = /^users\/me\/dataTypes\/([a-z-]+)\/dataPoints$/.exec(path);
+    const list = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints$/.exec(path);
     if (list && req.method === "GET") {
       const type = list[1]!;
       if (type === "nutrition-log") {
@@ -358,7 +385,9 @@ export async function fakeBackend(page: Page, opts: FakeOptions = {}) {
         const to = /civil_end_time < "([^"]+)"/.exec(filter)?.[1] ?? "9999";
         return send(route, { dataPoints: sleepPoints.filter((p) => p.wakeDate >= from && p.wakeDate < to).map(({ wakeDate: _w, ...p }) => p) });
       }
-      if (["exercise", "daily-resting-heart-rate"].includes(type)) return send(route, { dataPoints: [] });
+      if (["exercise", "daily-resting-heart-rate", "daily-heart-rate-variability", "daily-oxygen-saturation", "daily-respiratory-rate", "daily-sleep-temperature-derivations", "daily-vo2-max"].includes(type)) {
+        return send(route, { dataPoints: vitalPoints(type, req.url.searchParams.get("filter") ?? "") });
+      }
     }
     return fail(route, req);
   });

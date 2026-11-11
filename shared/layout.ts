@@ -12,6 +12,7 @@ export const METRIC_IDS = [
   "steps", "distance", "floors", "activeZoneMinutes", "activeMinutes", "caloriesBurned", "workouts",
   "caloriesEaten", "carbs", "fat", "protein", "fiber", "water",
   "heartRate", "restingHeartRate",
+  "hrv", "spo2", "breathingRate", "skinTemp", "vo2Max",
   "sleep", "sleepSchedule", "deepSleep", "remSleep",
   "weight", "bodyFat",
 ] as const;

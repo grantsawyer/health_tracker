@@ -93,6 +93,18 @@ describe("buildSummary", () => {
       }));
     }
     g.on("GET", /\/daily-resting-heart-rate\/dataPoints$/, overrides["daily-resting-heart-rate"] ?? (() => json({ dataPoints: [{ dailyRestingHeartRate: { date: { year: 2026, month: 11, day: 6 }, beatsPerMinute: "60" } }] })));
+    // Recovery vitals (shapes from Google's DataPoint reference; synthetic values).
+    const day6 = { year: 2026, month: 11, day: 6 };
+    const vitals: Record<string, unknown> = {
+      "daily-heart-rate-variability": { dailyHeartRateVariability: { date: day6, averageHeartRateVariabilityMilliseconds: 41.5 } },
+      "daily-oxygen-saturation": { dailyOxygenSaturation: { date: day6, averagePercentage: 96.4, lowerBoundPercentage: 93, upperBoundPercentage: 99 } },
+      "daily-respiratory-rate": { dailyRespiratoryRate: { date: day6, breathsPerMinute: 14.2 } },
+      "daily-sleep-temperature-derivations": { dailySleepTemperatureDerivations: { date: day6, nightlyTemperatureCelsius: 34.1, baselineTemperatureCelsius: 33.8 } },
+      "daily-vo2-max": { dailyVo2Max: { date: day6, vo2Max: 45.3, cardioFitnessLevel: "GOOD", estimated: true } },
+    };
+    for (const [type, point] of Object.entries(vitals)) {
+      g.on("GET", new RegExp(`/${type}/dataPoints$`), overrides[type] ?? (() => json({ dataPoints: [point] })));
+    }
     g.on("GET", /\/sleep\/dataPoints$/, () => json({ dataPoints: [sleepPoint({ id: "s1", start: "2026-11-06T05:00:00Z", end: "2026-11-06T11:00:00Z", asleep: 330, awake: 30 })] }));
     g.on("GET", /\/exercise\/dataPoints$/, () => json({ dataPoints: [exercisePoint({ id: "e1", start: "2026-11-06T13:00:00Z", end: "2026-11-06T13:20:00Z", type: "ROWING_MACHINE", name: "Rowing machine" })] }));
     return g;
@@ -111,6 +123,7 @@ describe("buildSummary", () => {
       activeMinutes: { light: 60, moderate: 0, vigorous: 15 },
       heartRate: { avg: 70.5, min: 50, max: 150 },
       nutrition: { kcal: 1500, proteinG: 60, carbsG: 150, fatG: 50.5, fiberG: 10 },
+      hrvMs: 41.5, spo2Pct: 96.4, breathingRate: 14.2, skinTempC: 34.1, skinTempBaselineC: 33.8, vo2Max: 45.3, cardioFitness: "GOOD",
     });
     expect(d.distanceKm).toBeCloseTo(3, 4);
     expect(d.weightKg).toBeCloseTo(70, 3);

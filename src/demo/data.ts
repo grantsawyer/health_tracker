@@ -94,6 +94,27 @@ export function day(date: string): DemoDay {
   };
 }
 
+// ── Recovery vitals (S1): one overnight record per day ───────────────────────
+export interface DemoVitals { hrvMs: number; spo2: { avg: number; lo: number; hi: number }; breathing: number; skinC: number; skinBaseC: number; vo2Max: number; fitness: string }
+
+/** Vitals for the night ending on `date` (null before that morning, like the sleep they come from). */
+export function vitals(date: string): DemoVitals | null {
+  if (!night(date)) return null;
+  const r = rng(`vitals:${date}`);
+  const ago = daysAgo(date);
+  const avg = round1(between(r, 95.4, 97.8));
+  const vo2Max = round1(44.5 - ago * 0.006 + between(r, -0.4, 0.4));
+  return {
+    hrvMs: Math.round(42 - ago * 0.01 + Math.sin(ago / 7) * 4 + between(r, -6, 6)),
+    spo2: { avg, lo: round1(avg - between(r, 2, 4)), hi: round1(Math.min(100, avg + between(r, 1, 2))) },
+    breathing: round1(between(r, 13.6, 15.4)),
+    skinC: Math.round((33.8 + between(r, -0.35, 0.35)) * 100) / 100,
+    skinBaseC: 33.8,
+    vo2Max,
+    fitness: vo2Max >= 46 ? "VERY_GOOD" : vo2Max >= 42 ? "GOOD" : "AVERAGE",
+  };
+}
+
 // ── Exercise (about three sessions a week) ────────────────────────────────────
 export interface DemoExercise {
   type: "RUNNING" | "WALKING" | "BIKING" | "WEIGHTLIFTING";

@@ -90,6 +90,26 @@ const rollupMappers: Record<(typeof ROLLUP_TYPES)[number], (v: Loose, day: Daily
   "hydration-log": (v, d) => (d.waterMl = num(v.hydrationLog?.amountConsumed?.millilitersSum)),
 };
 
+// ── Recovery vitals (S1): daily records with a `date` (field names from Google's DataPoint reference) ────────
+export const VITAL_TYPES = [
+  "daily-heart-rate-variability", "daily-oxygen-saturation", "daily-respiratory-rate",
+  "daily-sleep-temperature-derivations", "daily-vo2-max",
+] as const;
+const vitalMappers: Record<(typeof VITAL_TYPES)[number], (v: Loose, day: DailySummary) => void> = {
+  "daily-heart-rate-variability": (v, d) => (d.hrvMs = num(v.averageHeartRateVariabilityMilliseconds) ?? num(v.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds)),
+  "daily-oxygen-saturation": (v, d) => (d.spo2Pct = num(v.averagePercentage)),
+  "daily-respiratory-rate": (v, d) => (d.breathingRate = num(v.breathsPerMinute)),
+  "daily-sleep-temperature-derivations": (v, d) => {
+    d.skinTempC = num(v.nightlyTemperatureCelsius);
+    d.skinTempBaselineC = num(v.baselineTemperatureCelsius);
+  },
+  "daily-vo2-max": (v, d) => {
+    d.vo2Max = num(v.vo2Max);
+    const level = typeof v.cardioFitnessLevel === "string" ? v.cardioFitnessLevel : undefined;
+    d.cardioFitness = level && level !== "CARDIO_FITNESS_LEVEL_UNSPECIFIED" ? level : undefined;
+  },
+};
+
 // ── List mappers ─────────────────────────────────────────────────────────────
 export function mapSleep(p: DataPoint): SleepSession | null {
   const s = p.sleep as Loose | undefined;
@@ -176,11 +196,12 @@ export async function buildSummary(start: string, end: string, fresh: boolean, g
   }
 
   const opts = { start, end, fresh };
-  const [rollups, resting, sleep, exercise] = await Promise.all([
+  const [rollups, resting, sleep, exercise, vitals] = await Promise.all([
     Promise.all(ROLLUP_TYPES.map((id) => load(id, (i) => getRollup(i, opts)).then((v) => [id, v?.days ?? []] as const))),
     load("daily-resting-heart-rate", (i) => getPoints(i, opts)),
     load("sleep", (i) => getPoints(i, opts)),
     load("exercise", (i) => getPoints(i, opts)),
+    Promise.all(VITAL_TYPES.map((id) => load(id, (i) => getPoints(i, opts)).then((v) => [id, v?.dataPoints ?? []] as const))),
   ]);
 
   for (const [id, points] of rollups) {
@@ -193,6 +214,14 @@ export async function buildSummary(start: string, end: string, fresh: boolean, g
     const r = p.dailyRestingHeartRate as Loose | undefined;
     const day = r?.date ? days.get(civilToDate(r.date)) : undefined;
     if (day) day.restingHr = num(r!.beatsPerMinute);
+  }
+  for (const [id, points] of vitals) {
+    const field = dataTypeById(id)!.field;
+    for (const p of points) {
+      const v = p[field] as Loose | undefined;
+      const day = v?.date ? days.get(civilToDate(v.date)) : undefined;
+      if (day) vitalMappers[id](v!, day);
+    }
   }
 
   const byDateAsc = <T extends { startLocal: string }>(a: T, b: T) => a.startLocal.localeCompare(b.startLocal);
