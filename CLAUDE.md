@@ -258,7 +258,9 @@ Adapted, not copied: no Google branding.
   target bands (schedule, carbs/fat/protein) are a tint only, no dashed edges (owner request).
 - Food log entries carry a macro proportion bar (`src/food/macroSplit.ts`, `MacroSplitBar.tsx`): share of macro
   calories (4/9/4 kcal/g, like the day summary), carbs · fat · protein, gaps between segments, exact shares in the
-  label; none for calories-only entries. The entry text lists macros in the same order.
+  label; none for calories-only entries. The entry text lists macros in the same order. Entry rows (owner layout
+  2026-11-11) are a two-row grid: time | one-line name (ellipsis, full name in `title`) | kcal + pencil/trash icon
+  buttons (`aria-label` "Edit <name>" / "Delete <name>"), then details under the name and the bar under kcal + buttons.
 - Sleep schedule goals (2026-11-09): `bedtime` / `wakeTime` are optional clock goals (minutes after midnight,
   0–1439, `CLOCK_GOALS` / `OPTIONAL_GOALS` in shared/goals.ts). A night is on schedule when each set goal is within
   ±`SCHEDULE_TOLERANCE_MIN` (30, a display tolerance) (`checkSchedule` in src/dashboard/sleep.ts; bedtimes from noon

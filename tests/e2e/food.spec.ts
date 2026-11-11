@@ -258,3 +258,23 @@ test("each logged food shows its carbs / fat / protein balance", async ({ page }
   await expect(bar).toHaveAttribute("aria-label", "Carbs 48% · Fat 27% · Protein 24% of calories");
   await expect(bar.locator(".macro-split-seg")).toHaveCount(3);
 });
+
+test("entry rows: one-line names, icon buttons, macro bar under kcal and buttons", async ({ page }) => {
+  const long = "Synthetic grain bowl with roasted vegetables, chickpeas, tahini dressing and extra toppings";
+  await fakeBackend(page, {
+    entries: [{ id: "users/me/dataTypes/nutrition-log/dataPoints/11", timeLocal: at("12:30"), mealType: "LUNCH", displayName: long, kcal: 610, carbsG: 70, fatG: 25, proteinG: 22, editable: true }],
+  });
+  await page.goto("/#food");
+  const row = page.locator(".entry-list li", { hasText: "Synthetic grain bowl" });
+  const name = row.locator(".entry-name");
+  await expect(name).toHaveAttribute("title", long); // full name on hover
+  const lineHeight = await name.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height);
+  expect((await name.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
+  await expect(row.getByRole("button", { name: `Edit ${long}` })).toBeVisible();
+  await expect(row.getByRole("button", { name: `Delete ${long}` })).toBeVisible();
+  // The bar sits below the kcal + buttons, right-aligned with them.
+  const right = (await row.locator(".entry-right").boundingBox())!;
+  const bar = (await row.locator(".macro-split").boundingBox())!;
+  expect(bar.y).toBeGreaterThan(right.y + right.height - 1);
+  expect(Math.abs(bar.x + bar.width - (right.x + right.width))).toBeLessThan(2);
+});

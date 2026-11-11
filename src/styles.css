@@ -277,18 +277,26 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .chev { width: 20px; height: 20px; color: var(--muted); transition: transform .15s; flex: none; }
 .meal-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .entry-list { list-style: none; padding: 0 20px 8px; margin: 0; }
-.entry-list li { display: grid; grid-template-columns: 74px 1fr auto auto; align-items: center; gap: 4px 14px; padding: 10px 0; border-top: 1px solid var(--border); }
-.entry-time { font-size: 13px; font-variant-numeric: tabular-nums; }
-.entry-main { display: grid; min-width: 0; }
-.entry-name { overflow-wrap: anywhere; font-weight: 500; }
+/* Two rows per entry: time | name | kcal + icon buttons, then details under the name and the macro bar under the
+ * kcal/buttons. The name stays on one line (ellipsis; full name in its tooltip). */
+.entry-list li {
+  display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 2px 14px;
+  grid-template-areas: "time name right" "time detail bar"; padding: 10px 0; border-top: 1px solid var(--border);
+}
+.entry-time { grid-area: time; font-size: 13px; font-variant-numeric: tabular-nums; }
+.entry-name { grid-area: name; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry-right { grid-area: right; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.entry-detail { grid-area: detail; min-width: 0; }
+.entry-bar { grid-area: bar; display: flex; align-self: center; }
+.entry-icon { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; }
+.entry-icon svg { width: 17px; height: 17px; }
 /* Per-food macro balance (share of macro calories): carbs · fat · protein, gaps between segments so neighbors
  * stay distinct without relying on hue alone. Exact shares are in its label/tooltip. */
-.macro-split { display: flex; gap: 2px; height: 6px; width: min(100%, 240px); margin-top: 6px; border-radius: 999px; overflow: hidden; }
+.macro-split { display: flex; gap: 2px; height: 6px; width: 100%; border-radius: 999px; overflow: hidden; }
 .macro-split-seg { flex: 0 1 0; min-width: 2px; }
 .entry-detail { font-size: 12.5px; }
 .entry-kcal { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
-.entry-actions { display: flex; gap: 6px; font-size: 12.5px; }
-.entry-actions button { padding: 4px 12px; font-size: 13px; }
+.entry-actions { display: flex; gap: 4px; font-size: 12.5px; }
 .food-panel { display: grid; gap: 14px; }
 .food-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .food-panel-head h2 { margin: 0; font-size: 19px; }
@@ -317,9 +325,7 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .scanner { display: grid; gap: 8px; }
 .scanner video { width: 100%; max-width: 420px; border-radius: var(--r-md); background: #000; }
 @media (max-width: 640px) {
-  .entry-list li { grid-template-columns: 1fr auto; }
-  .entry-time { grid-column: 1 / -1; }
-  .entry-actions { grid-column: 1 / -1; }
+  .entry-list li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "time time" "name right" "detail bar"; }
   .pick-list button { flex-direction: column; gap: 2px; }
   .meal-kcal { font-size: 20px; }
 }

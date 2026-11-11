@@ -222,28 +222,31 @@ export function FoodView({ ctx, onChanged, autoOpenAdd, onAutoOpened }: { ctx: V
                         <ul className="entry-list">
                           {g.entries.map((e) => (
                             <li key={e.id}>
+                              {/* Two rows: name | kcal + actions, then details | macro bar (owner layout 2026-11-11). */}
                               <span className="entry-time muted">{fmtTime(e.timeLocal)}</span>
-                              <span className="entry-main">
-                                <span className="entry-name">{e.displayName}</span>
-                                <span className="muted entry-detail">
-                                  {e.serving ? `${+e.serving.amount.toFixed(2)} ${e.serving.label ?? ""} · ` : ""}
-                                  {/* Same order as the macro bar below and the charts: carbs · fat · protein. */}
-                                  {[e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`, e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`].filter(Boolean).join(" · ")}
-                                  {!e.editable && e.source ? ` · via ${e.source}` : ""}
+                              <span className="entry-name" title={e.displayName}>{e.displayName}</span>
+                              <span className="entry-right">
+                                <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
+                                <span className="entry-actions">
+                                  {e.editable ? (
+                                    <>
+                                      <button className="entry-icon" onClick={() => setPanel({ editing: e })} disabled={Boolean(panel) || busyId === e.id}
+                                        aria-label={`Edit ${e.displayName}`} title="Edit"><Icon.edit /></button>
+                                      <button className="entry-icon" onClick={() => remove(e)} disabled={busyId === e.id} aria-busy={busyId === e.id}
+                                        aria-label={`Delete ${e.displayName}`} title="Delete"><Icon.trash /></button>
+                                    </>
+                                  ) : (
+                                    <span className="muted" title="Logged by another app; edit it there">Read-only</span>
+                                  )}
                                 </span>
-                                <MacroSplitBar food={e} />
                               </span>
-                              <span className="entry-kcal">{e.kcal !== undefined ? fmtKcal(e.kcal) : dash}</span>
-                              <span className="entry-actions">
-                                {e.editable ? (
-                                  <>
-                                    <button onClick={() => setPanel({ editing: e })} disabled={Boolean(panel) || busyId === e.id}>Edit</button>
-                                    <button onClick={() => remove(e)} disabled={busyId === e.id}>{busyId === e.id ? "…" : "Delete"}</button>
-                                  </>
-                                ) : (
-                                  <span className="muted" title="Logged by another app; edit it there">Read-only</span>
-                                )}
+                              <span className="muted entry-detail">
+                                {e.serving ? `${+e.serving.amount.toFixed(2)} ${e.serving.label ?? ""} · ` : ""}
+                                {/* Same order as the macro bar and the charts: carbs · fat · protein. */}
+                                {[e.carbsG !== undefined && `${fmtInt(e.carbsG)}g carbs`, e.fatG !== undefined && `${fmtInt(e.fatG)}g fat`, e.proteinG !== undefined && `${fmtInt(e.proteinG)}g protein`].filter(Boolean).join(" · ")}
+                                {!e.editable && e.source ? ` · via ${e.source}` : ""}
                               </span>
+                              <span className="entry-bar"><MacroSplitBar food={e} /></span>
                             </li>
                           ))}
                         </ul>
