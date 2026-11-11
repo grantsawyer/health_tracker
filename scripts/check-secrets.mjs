@@ -25,12 +25,16 @@ import { readFileSync } from "node:fs";
 
 /** Paths that must never be in a commit (agent permission/memory files, secrets, local data). */
 const FORBIDDEN_PATHS = [
+  // Agent folders are treated like .env (Apiiro's guidance): settings, approved commands, memory and chat logs.
   [/(^|\/)\.claude\/settings\.local\.json$/, "Claude Code local settings (saved \"don't ask again\" commands)"],
-  [/(^|\/)\.claude\/.*\.local\.[a-z]+$/, "Claude Code local file"],
-  [/(^|\/)CLAUDE\.local\.md$/, "Claude Code local memory"],
-  [/(^|\/)\.claude\/worktrees\//, "Claude Code worktree"],
+  [/(^|\/)\.claude\//, "coding-agent folder (.claude/)"],
+  [/(^|\/)\.cursor\//, "coding-agent folder (.cursor/)"],
+  [/(^|\/)\.gemini\//, "coding-agent folder (.gemini/)"],
+  [/(^|\/)\.specstory\//, "agent chat history (.specstory/)"],
+  [/(^|\/)\.codex\//, "coding-agent folder (.codex/)"],
+  [/(^|\/)\.aider[^/]*$/, "aider history/config"],
+  [/(^|\/)(CLAUDE|AGENTS|GEMINI)\.local\.md$/, "local agent memory file"],
   [/(^|\/)\.mcp\.json$/, "MCP server config (often holds tokens)"],
-  [/(^|\/)\.cursor\/mcp\.json$/, "Cursor MCP config"],
   [/(^|\/)\.env(\.(?!example$)[^/]*)?$/, "environment file"],
   [/\.(pem|p12|pfx|key|enc)$/, "key or encrypted token file"],
   [/(^|\/)(client_secret|credentials)[^/]*\.json$/, "OAuth client / credentials file"],
@@ -51,6 +55,14 @@ const SIGNATURES = [
   [/(?:AKIA|ASIA)[0-9A-Z]{16}/g, "AWS access key"],
   [/xox[abposr]-[A-Za-z0-9-]{20,}/g, "Slack token"],
   [/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/g, "private key"],
+  // Passwords inside commands (what "don't ask again" rules capture), not just provider key formats. A value that is
+  // a variable reference ($VAR, ${VAR}, <placeholder>) is fine: that's the recommended way to pass secrets.
+  [/\b(?:PGPASSWORD|MYSQL_PWD|[A-Z_]*PASSWORD|[A-Z_]*PASSWD)=(?![$<{]|"\$)[^\s"'`\\;)]{4,}/g, "password in an environment assignment"],
+  [/\bsshpass\s+-p\s*(?![$<{]|"\$)[^\s"'`\\;)]{3,}/g, "sshpass password"],
+  [/\bmysql(?:dump|admin)?\b[^\n"'`]{0,80}?\s-p(?![$<{]|"\$)[^\s"'`\\;)]{3,}/g, "mysql -p password"],
+  [/\bBearer\s+(?![$<{]|"\$)[A-Za-z0-9._~+/=-]{20,}/g, "bearer token in a header"],
+  [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@"'`]+:(?![$<{])[^\s@/"'`]{4,}@[^\s"'`]+/gi, "URL with an embedded password"],
+  [/\bcurl\b[^\n"'`]{0,200}?\s(?:-u|--user)\s+[^\s:"'`]+:(?![$<{])[^\s"'`\\;)]{4,}/g, "curl user and password option"],
 ];
 const SYNTHETIC = /test|example|synthetic|fake|dummy|placeholder|e2e|seeded/i;
 /**

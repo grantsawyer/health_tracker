@@ -39,8 +39,15 @@ samples/
 # Coding-agent local state. Claude Code's "Yes, and don't ask again" saves the full approved command (including any
 # secret typed into it) to .claude/settings.local.json, and only ignores that file in the user's global gitignore,
 # which other clones and machines don't have. Ignore it here too; scripts/check-secrets.mjs also refuses to commit it.
-.claude/settings.local.json
-.claude/*.local.*
-.claude/worktrees/
+# Every agent folder is treated like .env (settings, approved commands, memory, chat logs). CLAUDE.md at the repo
+# root is the one deliberate exception: shared project instructions, scanned like any other file.
+.claude/
+.cursor/
+.gemini/
+.specstory/
+.codex/
+.aider*
 CLAUDE.local.md
+AGENTS.local.md
+GEMINI.local.md
 .mcp.json

@@ -61,10 +61,14 @@ food logging written back to Google Health. Single user (the owner). See README.
 - **Coding-agent settings files never get committed.** Claude Code's "Yes, and don't ask again" saves the full
   approved command, including any secret in it, to `.claude/settings.local.json`, and only ignores that file in the
   user's global gitignore (other clones don't have it; Apiiro found 1,122 public copies with real secrets, Nov 2026).
-  The repo `.gitignore` covers it, and `scripts/check-secrets.mjs` blocks it even when force-added, along with
-  credential patterns (Google client secrets and tokens, API keys, GitHub/AWS/Anthropic/OpenAI/Slack keys, private
-  keys). Never put a secret on a command line; read it from `~/.health_tracker/.env` instead. Test values must look
-  fake (contain "test", "example", "synthetic", …).
+  Every agent folder (`.claude/`, `.cursor/`, `.gemini/`, `.specstory/`, `.codex/`, `.aider*`, `*.local.md`,
+  `.mcp.json`) is treated like `.env`: ignored in `.gitignore`, and `scripts/check-secrets.mjs` blocks it even when
+  force-added. It also scans for credential patterns (Google client secrets, tokens and API keys;
+  GitHub/AWS/Anthropic/OpenAI/Slack keys; private keys) **and passwords inside commands** (`PGPASSWORD=`,
+  `sshpass -p`, `mysql -p…`, bearer headers, `user:pass@` URLs, `curl -u`). `$VAR` references are allowed.
+  Never put a secret on a command line; reference `$VAR` or read it from `~/.health_tracker/.env`. Test values must
+  look fake (contain "test", "example", "synthetic", …). Root `CLAUDE.md` is the one deliberate agent file in the
+  repo (shared instructions, scanned like any file).
 - `npm run check:privacy` now runs check-secrets first, then the private-values check. CI
   (`.github/workflows/secret-scan.yml`) runs `check-secrets --history` on every push.
 
