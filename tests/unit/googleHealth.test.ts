@@ -3,11 +3,11 @@ import {
   AccountNotLinkedError, HealthApiError, addDays, batchDeleteDataPoints, civilDate, dailyRollUp, healthFetch,
   isDataPointName, listDataPoints, rangeFilter,
 } from "../../core/healthClient.js";
-import { ReauthRequiredError } from "../../server/oauth.js";
-import { clearTokens, loadTokens, saveTokens } from "../../server/tokenStore.js";
+import { ReauthRequiredError } from "../../core/errors.js";
 import { dataTypeById } from "../../shared/dataTypes.js";
-import { HEALTH, done, fakeFetch, json } from "../helpers/fakeGoogle.js";
+import { done, fakeFetch, json } from "../helpers/fakeGoogle.js";
 import { signIn } from "../helpers/fixtures.js";
+import { testPlatform } from "../helpers/testPlatform.js";
 
 const t = (id: string) => dataTypeById(id)!;
 
@@ -115,40 +115,22 @@ describe("with a signed-in session", () => {
     expect(err.message).toContain("backend unavailable");
   });
 
-  it("on 401 refreshes the token once and retries", async () => {
+  it("on 401 asks the platform for a fresh token once and retries; a second 401 means sign in again", async () => {
     const g = fakeFetch()
       .on("GET", /\/identity$/, () => new Response("", { status: 401 }), 1)
-      .on("POST", /oauth2\.googleapis\.com\/token$/, () => json({ access_token: "fresh-token", expires_in: 3600, scope: "openid", token_type: "Bearer" }))
-      .on("GET", /\/identity$/, (req) => json({ healthUserId: req.headers.authorization }));
-    const r = await healthFetch<{ healthUserId: string }>("/users/me/identity");
-    expect(r.healthUserId).toBe("Bearer fresh-token");
-    expect(g.to(/\/token$/)[0]!.body.grant_type).toBe("refresh_token");
-    expect(loadTokens()!.accessToken).toBe("fresh-token");
-    expect(loadTokens()!.refreshToken).toBe("test-refresh-token"); // kept when Google doesn't rotate it
-  });
-
-  it("a rejected refresh token (invalid_grant) becomes ReauthRequiredError", async () => {
-    saveTokens({ ...loadTokens()!, accessTokenExpiresAt: 0 });
-    fakeFetch().on("POST", /\/token$/, () => json({ error: "invalid_grant", error_description: "Token has been expired or revoked." }, 400));
+      .on("GET", /\/identity$/, () => json({ healthUserId: "42" }), 1)
+      .on("GET", /\/identity$/, () => new Response("", { status: 401 }));
+    const before = testPlatform.invalidations;
+    expect((await healthFetch<{ healthUserId: string }>("/users/me/identity")).healthUserId).toBe("42");
+    expect(testPlatform.invalidations).toBe(before + 1);
     await expect(healthFetch("/users/me/identity")).rejects.toBeInstanceOf(ReauthRequiredError);
-  });
-
-  it("concurrent requests share a single token refresh", async () => {
-    saveTokens({ ...loadTokens()!, accessTokenExpiresAt: 0 });
-    const g = fakeFetch()
-      .on("POST", /\/token$/, async () => {
-        await new Promise((r) => setTimeout(r, 20));
-        return json({ access_token: "shared", expires_in: 3600, scope: "openid", token_type: "Bearer" });
-      })
-      .on("GET", new RegExp(`${HEALTH.replace(/[/.]/g, "\\$&")}`), () => json({ dataPoints: [] }));
-    await Promise.all([1, 2, 3].map(() => healthFetch("/users/me/dataTypes/steps/dataPoints")));
-    expect(g.to(/\/token$/)).toHaveLength(1);
+    expect(g.calls).toHaveLength(4);
   });
 });
 
 describe("without a session", () => {
   it("throws ReauthRequiredError instead of calling Google", async () => {
-    clearTokens();
+    testPlatform.signOut();
     const g = fakeFetch();
     await expect(healthFetch("/users/me/identity")).rejects.toBeInstanceOf(ReauthRequiredError);
     expect(g.calls).toHaveLength(0);

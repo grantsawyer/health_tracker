@@ -11,7 +11,6 @@
     "tests",
     "src",
     "shared",
-    "server",
     "core",
     "platform",
     "vitest.config.ts",

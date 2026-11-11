@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, backendMode } from "./api";
+import { ApiError, api } from "./api";
 import { buildExport, exportFileName, newFavorites, parseImport } from "./settingsTransfer";
 import type { SettingsSyncInfo } from "../shared/types";
 
@@ -16,7 +16,6 @@ export function SettingsCard() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (backendMode !== "browser") return;
     void api.settingsSync().then(setSync);
     return api.watchSettingsSync(setSync);
   }, []);
@@ -64,7 +63,7 @@ export function SettingsCard() {
       for (const t of toAdd) await api.food.addFavorite(t);
       const parts = [data.goals && "goals", data.layout && "Today layout", toAdd.length ? `${toAdd.length} favorite${toAdd.length === 1 ? "" : "s"}` : null].filter(Boolean);
       setMessage({ ok: true, text: parts.length ? `Imported ${parts.join(", ")}.` : "Nothing new to import." });
-      if (backendMode === "browser") setSync(await api.syncSettingsNow());
+      setSync(await api.syncSettingsNow());
     } catch (err) {
       setMessage({ ok: false, text: err instanceof ApiError || err instanceof Error ? err.message : String(err) });
     } finally {
@@ -76,7 +75,7 @@ export function SettingsCard() {
     <section className="card card-wide" aria-labelledby="settings-h">
       <h2 id="settings-h">Your settings</h2>
       <p className="muted">Goals, the Today layout and favorite foods. They contain no health data.</p>
-      {backendMode === "browser" && sync && (
+      {sync && (
         <div className="sync-row">
           <span className={`dot ${sync.state === "synced" ? "dot-ok" : "dot-off"}`} aria-hidden />
           <span role="status">{describeSync(sync)}</span>
@@ -109,6 +108,6 @@ function describeSync(s: SettingsSyncInfo): string {
     case "local":
       return `Saved in this browser. ${s.reason}.`;
     case "off":
-      return "Saved by the local server.";
+      return "Saved in this browser.";
   }
 }

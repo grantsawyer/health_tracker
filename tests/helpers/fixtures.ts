@@ -4,10 +4,10 @@
  * names, UTC times + "-18000s" offsets) but every value and ID here is made
  * up; no real health data is committed.
  */
-import { saveTokens } from "../../server/tokenStore.js";
+import { testPlatform } from "./testPlatform.js";
 
 export const USER = "users/1234567890123456789";
-export const OUR_CLIENT = "123456789012-testclientid.apps.googleusercontent.com"; // matches tests/setup.ts
+export const OUR_CLIENT = "123456789012-testclientid.apps.googleusercontent.com"; // matches tests/helpers/testPlatform.ts
 export const EST = "-18000s";
 
 export const ALL_SCOPES = [
@@ -18,15 +18,12 @@ export const ALL_SCOPES = [
   ),
 ];
 
-/** Store a valid, unexpired session so healthFetch doesn't try to refresh. */
-export function signIn(scopes = ALL_SCOPES, email = "tester@example.com") {
-  saveTokens({
-    accessToken: "test-access-token",
-    accessTokenExpiresAt: Date.now() + 3600_000,
-    refreshToken: "test-refresh-token",
-    scope: scopes.join(" "),
-    email,
-  });
+/**
+ * Act as a signed-in account. Settings, queue and cache are per account, as in the browser. Granted scopes are
+ * passed to core where it needs them (buildSummary), so `scopes` is accepted only for call-site compatibility.
+ */
+export function signIn(_scopes = ALL_SCOPES, email = "tester@example.com") {
+  testPlatform.signIn(email, "test-access-token");
 }
 
 const civil = (d: string) => {

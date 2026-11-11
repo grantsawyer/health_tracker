@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SetupInfo } from "../shared/types";
-import { api, backendMode } from "./api";
+import { api } from "./api";
 import { DataExplorer } from "./DataExplorer";
 import { SetupWizard } from "./SetupWizard";
 import { DashboardShell } from "./dashboard/DashboardShell";
@@ -124,7 +124,7 @@ export function App() {
   const connected = status?.state === "connected";
   const demo = isDemo();
   // The setup and sign-in screens offer the demo (browser mode only; the demo runs in the page).
-  const offerDemo = backendMode === "browser" && !demo && Boolean(status) && ["not_configured", "signed_out", "reauth_required"].includes(status!.state);
+  const offerDemo = !demo && Boolean(status) && ["not_configured", "signed_out", "reauth_required"].includes(status!.state);
   const activeTab: Tab = connected ? tab : "connection";
   const navButton = (t: (typeof TABS)[number]) => (
     <button key={t.id} className="nav-btn" onClick={() => setTab(t.id)} aria-current={activeTab === t.id ? "page" : undefined}
@@ -175,9 +175,7 @@ export function App() {
             )}
             {loadError && (
               <div className="banner banner-error" role="alert">
-                {backendMode === "server"
-                  ? <>Couldn't reach the local server. Is <code>npm run dev:server-mode</code> running? </>
-                  : "Couldn't start the app. "}
+                Couldn't start the app.{" "}
                 <span className="muted">({loadError})</span>
               </div>
             )}
@@ -195,7 +193,7 @@ export function App() {
                 <>
                   {connected && <Preferences />}
                   {connected && <SettingsCard />}
-                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onForget={backendMode === "browser" && !demo ? forget : undefined} onRetry={refresh} onSetup={() => setShowSetup(true)} />
+                  <ConnectionCard status={status} onLogin={login} onLogout={logout} onForget={demo ? undefined : forget} onRetry={refresh} onSetup={() => setShowSetup(true)} />
                 </>
               )
             )}
@@ -243,14 +241,7 @@ function ConnectionCard({ status, onLogin, onLogout, onForget, onRetry, onSetup 
           <h2>Connect Google Health</h2>
           <p>Sign in with the Google account you added as a test user.</p>
           {status.message && <p className="error-text">{status.message}</p>}
-          {backendMode === "server" ? (
-            <p className="muted">
-              If Google shows “Access blocked”, “redirect_uri_mismatch” or an invalid-client error, recheck steps 5–7
-              in <button className="link" onClick={onSetup}>setup</button>.
-            </p>
-          ) : (
-            <SignInHelp onSetup={onSetup} />
-          )}
+          <SignInHelp onSetup={onSetup} />
           <div className="actions">
             <button className="primary" onClick={onLogin}>Sign in with Google</button>
             <button onClick={onSetup}>Change Google credentials</button>
@@ -262,9 +253,8 @@ function ConnectionCard({ status, onLogin, onLogout, onForget, onRetry, onSetup 
         <section className="card">
           <h2>Sign in again</h2>
           <p>
-            {backendMode === "server"
-              ? "Your Google sign-in expired. While the app's OAuth client is in Testing mode, Google expires it every 7 days."
-              : "Your Google sign-in for this visit has ended. A web page can only stay signed in for about an hour without a click, so this is expected."}
+            Your Google sign-in for this visit has ended. A web page can only stay signed in for about an hour without a
+            click, so this is expected.
           </p>
           <div className="actions">
             <button className="primary" onClick={onLogin}>{status.email ? `Continue as ${status.email}` : "Sign in with Google"}</button>
@@ -307,12 +297,6 @@ function ConnectionCard({ status, onLogin, onLogout, onForget, onRetry, onSetup 
             <dd>{status.email ?? "—"}</dd>
             <dt>Health user ID</dt>
             <dd><code>{status.healthUserId ?? "—"}</code></dd>
-            {status.refreshTokenExpiresAt && (
-              <>
-                <dt>Sign-in expires</dt>
-                <dd>{new Date(status.refreshTokenExpiresAt).toLocaleString()}</dd>
-              </>
-            )}
           </dl>
           <ScopeList status={status} />
           <div className="actions">

@@ -461,7 +461,7 @@ describe("core/ on the browser platform", () => {
   it("stores records under the signed-in email and identifies itself to Open Food Facts without contact details", async () => {
     const { bp } = await signedIn();
     expect(bp.userKey()).toBe(EMAIL_A);
-    expect(bp.platform.off).toEqual({ headers: {}, query: { app_name: "HealthTracker", app_version: "0.2.0" }, search: "legacy" });
+    expect(bp.platform.off).toEqual({ query: { app_name: "HealthTracker", app_version: "0.2.0" } });
     expect(bp.platform.clientId()).toBe(CLIENT_ID);
   });
 

@@ -88,7 +88,7 @@ export function createBrowserPlatform(o: BrowserPlatformOptions): BrowserPlatfor
     pending,
     // Browsers can't set User-Agent, and a custom header would force a CORS preflight (which fails whenever OFF is
     // busy), so identify with query parameters. No contact details.
-    off: { headers: {}, query: { app_name: "HealthTracker", app_version: o.version }, search: "legacy" },
+    off: { query: { app_name: "HealthTracker", app_version: o.version } },
     log: o.log ?? { info: (m) => console.info(m), warn: (m) => console.warn(m) },
   };
 

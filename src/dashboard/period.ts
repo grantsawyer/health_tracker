@@ -39,7 +39,7 @@ export function displayRange(p: Period): { start: string; end: string } {
   return { start: addDaysISO(p.anchor, 1 - WINDOW_DAYS[p.kind]), end: addDaysISO(p.anchor, 1) };
 }
 
-/** The range to request from the server: the display range, clipped so it never asks for future days. */
+/** The range to request from Google: the display range, clipped so it never asks for future days. */
 export function fetchRange(p: Period, today = todayISO()): { start: string; end: string } {
   const r = displayRange(p);
   const tomorrow = addDaysISO(today, 1);

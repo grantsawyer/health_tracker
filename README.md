@@ -26,8 +26,8 @@ Signing in there needs a Google account that's on the project's test-user list (
 screens: the whole app on synthetic data, with no Google account. Nothing is sent anywhere and nothing is saved;
 a "Demo data" banner shows on every screen. The demo lives in `src/demo/` and loads only when used.
 
-The old **local server** (Node + Hono, client secret + 7-day refresh token in `~/.health_tracker/`)
-still works as a fallback until migration phase 6: `npm run dev:server-mode`.
+The original **local server** (Node + Hono, client secret, 7-day refresh token) was retired on
+2026-11-11 (migration phase 6); it's in git history before that date.
 
 ## Google Cloud setup (one time)
 
@@ -54,12 +54,12 @@ The steps, for reference:
 7. **OAuth client:** Clients → Create client → **Web application**. Under **Authorized JavaScript
    origins** add `http://localhost:5173` and, for the hosted app, `https://grantsawyer.github.io` (an origin is
    scheme + host only: no path, no trailing slash). No redirect URI is needed.
-   *Already have a client from the server version?* Add the origin to it: the same client ID keeps
+   *Already have a client (another address, or the old server version)?* Add the origin to it: the same client ID keeps
    your earlier entries editable.
 8. **Give the client ID to the app:** the in-app setup form.
 
 > **Sign-in:** a browser can't hold a refresh token, so Google sign-in lasts about an hour. Expect a
-> one-click “Continue” about once per visit. (Server mode keeps a 7-day refresh token instead.)
+> one-click “Continue” about once per visit.
 > Settings sync needs a second, separate Google sign-in for Drive (Account → **Connect Google Drive**):
 > Google Health rejects tokens that carry any other scope, so the two can't share one.
 
@@ -98,16 +98,9 @@ PAGES_BASE=/health_tracker/ npx vite build   # what the Pages workflow builds
 npx vite preview --base /health_tracker/     # serve that build locally (with its CSP)
 ```
 
-Server mode (fallback until phase 6; uses `~/.health_tracker/.env` with a client secret and the
-redirect URI `http://localhost:8787/auth/callback`):
-
-```sh
-npm run dev:server-mode  # server on :8787 + Vite on http://localhost:5173
-VITE_BACKEND=server npm run build && npm start   # single process on http://localhost:8787
-```
-
-Moving settings between the two: **Account → Your settings → Export settings** in one, **Import
-settings** in the other (goals, Today layout, favorites; no health data).
+Moving settings between browsers or copies of the app: they sync through Google Drive, or use **Account → Your
+settings → Export settings** in one and **Import settings** in the other (goals, Today layout, favorites; no
+health data).
 
 ## Hosting (GitHub Pages)
 
@@ -139,10 +132,9 @@ npm run test:e2e    # browser tests (Playwright, uses your installed Chrome), ~1
 npm run test:all    # both
 ```
 
-- **Unit tests** (`tests/unit/`) exercise core/, the browser platform (fake GIS, fake Drive,
-  fake-indexeddb) and the server, against a strict fake of Google Health, Google OAuth and Open Food
-  Facts: any request a test didn't expect fails it, so nothing reaches the real network. Each test
-  file gets its own temporary `HEALTH_TRACKER_HOME`, so your real `~/.health_tracker` is never touched.
+- **Unit tests** (`tests/unit/`) exercise core/ (on an in-memory platform, `tests/helpers/memoryPlatform.ts`), the
+  browser platform (fake GIS, fake Drive, fake-indexeddb) and the demo, against a strict fake of Google Health and
+  Open Food Facts: any request a test didn't expect fails it, so nothing reaches the real network.
 - **Browser tests** (`tests/e2e/`) run the real serverless app on port 5174 against in-browser fakes of
   Google sign-in, Google Health, Drive and Open Food Facts (`tests/e2e/fakeBackend.ts`), so they never
   touch your Google data.
@@ -177,34 +169,30 @@ Rules that the check can't enforce:
 - Screenshots of the real app stay in `samples/` (gitignored).
 - Commits use the GitHub noreply email (this repo's local `git config user.email`), not a personal address.
 
-## Files in `~/.health_tracker/` (server mode only)
+## Files in `~/.health_tracker/`
+
+The app itself stores nothing on your computer outside the browser. This folder only holds inputs for the privacy
+check, kept outside the repo so they're never published:
 
 | File | Contents |
 |---|---|
-| `.env` | Google OAuth client ID and secret, optional `PORT` |
-| `token.enc` | OAuth tokens, AES-256-GCM encrypted (0600) |
-| `token.key` | Encryption key for `token.enc` (0600) |
-| `cache.db` | SQLite cache of API responses (safe to delete) |
-| `app.db` | Goals, Today layout, favorites, and entries waiting to sync to Google (keep this one) |
 | `private-patterns.txt` | Your personal values for `npm run check:privacy` (never commit) |
+| `.env` | Optional: `GOOGLE_CLIENT_ID=…` so the privacy check also blocks your real client ID |
 
-The encryption keeps the refresh token from sitting in plain text if `token.enc` alone gets copied
-or backed up. It does **not** protect against someone who can read your user account's files, since
-the key sits next to it.
-
-To fully disconnect: click **Sign out** (revokes the token at Google), or delete `token.enc`.
+Older files from the retired local server (`token.enc`, `token.key`, `cache.db`, `app.db`, a client secret in
+`.env`) are no longer used. Delete them once your goals, layout and favorites are in the browser app (Account →
+Your settings shows them; they sync through Drive). The old server's refresh token stops working on its own (Google
+expires Testing-mode refresh tokens after 7 days). Don't remove the app at Google's account connections page for
+this: the browser app uses the same OAuth client and would lose its access too.
 
 ## Security notes
 
 - Hosted builds have a Content Security Policy (see [Hosting](#hosting-github-pages)).
-- Browser mode: no client secret exists; the access token (about an hour) is kept in memory and the
+- No client secret exists; the access token (about an hour) is kept in memory and the
   tab's `sessionStorage`, never `localStorage`. Sign-out revokes it at Google and clears cached health
   data; queued food entries stay until sent or discarded. The browser retries queued entries only while
   the app is open.
-- Server mode: the server rejects requests whose `Host` isn't `localhost`/`127.0.0.1` (DNS-rebinding
-  guard) and state-changing requests from any other `Origin` (CSRF guard). Its OAuth flow uses
-  `state` + PKCE (S256).
-- `include_granted_scopes` is deliberately **not** sent (either mode): it has been reported to break
+- `include_granted_scopes` is deliberately **not** sent: it has been reported to break
   tokens for accounts that previously consented to legacy Google Fit scopes.
 - Write scopes (`*.writeonly`) let the app add data and edit/delete only data **it** created. They
   grant no read access.

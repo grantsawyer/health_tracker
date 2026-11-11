@@ -29,19 +29,15 @@ export interface RangeQuery {
   fresh?: boolean;
 }
 
-/** Everything the UI asks of the backend. Implemented by api.browser.ts (default) and api.server.ts. */
+/** Everything the UI asks of the backend. Implemented by api.browser.ts (core/ + platform/ in the page). */
 export interface Api {
   status(): Promise<StatusResponse>;
-  /** `forgetDevice` (browser mode) also removes this browser's settings copy and unsent food entries. */
+  /** `forgetDevice` also removes this browser's settings copy and unsent food entries. */
   logout(opts?: { forgetDevice?: boolean }): Promise<{ ok: true }>;
-  /**
-   * Browser mode: opens Google's sign-in pop-up and resolves once signed in. It must be called directly from a
-   * click handler. Server mode: navigates to the server's OAuth flow (never resolves).
-   */
+  /** Opens Google's sign-in pop-up and resolves once signed in. It must be called directly from a click handler. */
   login(): Promise<void>;
   setupInfo(): Promise<SetupInfo>;
-  /** The secret is only used (and required) in server mode. */
-  saveCredentials(clientId: string, clientSecret?: string): Promise<{ ok: true }>;
+  saveCredentials(clientId: string): Promise<{ ok: true }>;
 
   dataTypes(): Promise<DataTypeWithGrant[]>;
   points(type: string, q: RangeQuery): Promise<PointsResponse>;
@@ -81,7 +77,7 @@ export interface Api {
   nutritionTest(input: { kcal: number; foodDisplayName: string }): Promise<{ operation: unknown }>;
   deletePoints(names: string[]): Promise<{ operation: unknown }>;
 
-  /** Settings sync with Google Drive (browser mode); `off` in server mode. */
+  /** Settings sync with Google Drive; `off` before a client ID is set up. */
   settingsSync(): Promise<SettingsSyncInfo>;
   syncSettingsNow(): Promise<SettingsSyncInfo>;
   /** Browser mode: get the Drive token (its own Google pop-up; call it directly from a click), then sync. */

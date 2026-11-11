@@ -20,10 +20,10 @@ import { ApiError, testEntryFields, type Api } from "./apiTypes";
 import { currentRuntime, resetRuntime, runtime, saveClientId, type Runtime } from "./browser/runtime";
 
 /**
- * Browser mode (default): the UI's calls run core/ directly in the page, on the
- * browser platform (GIS sign-in, IndexedDB, Drive settings). No server.
- * Errors are mapped to the same ApiError status codes and `error` keys the
- * local server used (server/dataRoutes.ts), so the UI handles both alike.
+ * The UI's calls run core/ directly in the page, on the browser platform (GIS
+ * sign-in, IndexedDB, Drive settings). No server. Core errors are mapped to
+ * ApiError status codes and `error` keys (400 bad_request, 401 reauth_required,
+ * 403 not_editable, …) that the UI branches on.
  */
 
 export function toApiError(err: unknown): ApiError {
@@ -113,7 +113,6 @@ export const browserApi: Api = {
   async setupInfo() {
     const rt = await runtime();
     return {
-      mode: "browser",
       configured: Boolean(rt.clientId),
       clientIdHint: rt.clientId ? `…${rt.clientId.slice(-34)}` : undefined,
       clientId: rt.clientId ?? undefined,

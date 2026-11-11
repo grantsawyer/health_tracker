@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { OffError, productByBarcode, searchFoods } from "../../core/openFoodFacts.js";
+import { OffError, offRetry, productByBarcode, searchFoods } from "../../core/openFoodFacts.js";
 import { fakeFetch, json } from "../helpers/fakeGoogle.js";
 
-const SEARCH = /search\.openfoodfacts\.org\/search$/;
+offRetry.delayMs = 0; // retries are tested in openFoodFactsBrowser.test.ts
+
+const SEARCH = /world\.openfoodfacts\.org\/cgi\/search\.pl$/;
 const PRODUCT = /world\.openfoodfacts\.org\/api\/v2\/product\/\d+\.json$/;
 
 describe("searchFoods", () => {
   it("normalizes hits: kJ fallback, salt → sodium, brand arrays, and drops unusable hits", async () => {
-    const g = fakeFetch().on("GET", SEARCH, () => json({ hits: [
+    const g = fakeFetch().on("GET", SEARCH, () => json({ products: [
       { code: "1", product_name: "Nonfat Greek Yogurt", brands: ["Chobani", "Other"], nutriments: { "energy-kcal_100g": 52.9, proteins_100g: 9.41, carbohydrates_100g: 3.53, fat_100g: 0, sodium_100g: 0.0382 } },
       { code: "2", product_name: "Energy in kJ only", brands: "Acme, Sub", nutriments: { "energy-kj_100g": 418.4, salt_100g: 1 } },
       { code: "3", product_name: "", nutriments: { "energy-kcal_100g": 10 } }, // no name
@@ -19,25 +21,20 @@ describe("searchFoods", () => {
       per100g: { kcal: 53, proteinG: 9.4, carbsG: 3.5, fatG: 0, fiberG: undefined, sugarG: undefined, sodiumMg: 38 } });
     expect(r[1]).toMatchObject({ brand: "Acme", per100g: { kcal: 100, sodiumMg: 400 } });
     const q = g.calls[0]!.url.searchParams;
-    expect(q.get("q")).toBe("greek yogurt");
+    expect(q.get("search_terms")).toBe("greek yogurt");
+    expect(q.get("app_name")).toBe("HealthTracker"); // identifies the app without a custom header
     expect(q.get("fields")).toContain("nutriments");
   });
 
-  it("identifies itself with a User-Agent that contains no email unless OFF_CONTACT is set", async () => {
-    const g = fakeFetch().on("GET", SEARCH, () => json({ hits: [] }));
-    await searchFoods("ua check");
-    expect(g.calls[0]!.headers["user-agent"]).toBe("HealthTracker/0.1 (personal non-commercial use)");
-  });
-
   it("caches results, and cache hits don't count against the rate limit", async () => {
-    const g = fakeFetch().on("GET", SEARCH, () => json({ hits: [] }));
+    const g = fakeFetch().on("GET", SEARCH, () => json({ products: [] }));
     await searchFoods("cached query");
     await searchFoods("CACHED query");
     expect(g.calls).toHaveLength(1);
   });
 
   it("enforces 10 searches a minute", async () => {
-    fakeFetch().on("GET", SEARCH, () => json({ hits: [] }));
+    fakeFetch().on("GET", SEARCH, () => json({ products: [] }));
     // Earlier tests in this file used some of the window; fill the rest with distinct queries.
     let err: unknown;
     for (let i = 0; i < 12 && !err; i++) await searchFoods(`limit test ${i}`).catch((e) => (err = e));

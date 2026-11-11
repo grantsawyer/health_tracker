@@ -1,9 +1,9 @@
 /**
  * Everything the core logic needs from its host, behind small interfaces.
  *
- * core/ never touches the file system, SQLite, process.env or the DOM. The
- * local server registers SQLite + token-file implementations (server/platform.ts);
- * the browser build will register IndexedDB / Google Drive / GIS ones. All
+ * core/ never touches the file system, process.env or the DOM. The browser
+ * registers IndexedDB / Google Drive / GIS implementations (platform/), the demo
+ * an in-memory one (src/demo/), and unit tests theirs (tests/helpers/). All
  * storage is async so IndexedDB fits.
  */
 
@@ -53,17 +53,11 @@ export interface PendingStore {
 
 export interface OffConfig {
   /**
-   * Identifies the app (OFF's API policy asks for it). The server sends a `User-Agent` header. Browsers can't set
-   * that, and any custom header (X-User-Agent) forces a CORS preflight, so the browser sends `app_name` /
-   * `app_version` query parameters instead and keeps requests "simple" (one GET, no preflight).
+   * Identifies the app (OFF's API policy asks for it). Browsers can't set `User-Agent`, and any custom header
+   * (X-User-Agent) forces a CORS preflight, so the app sends `app_name` / `app_version` query parameters and keeps
+   * requests "simple" (one GET, no preflight).
    */
-  headers: Record<string, string>;
-  query?: Record<string, string>;
-  /**
-   * `searchalicious` = search.openfoodfacts.org (fast, but sends no CORS header, so server only).
-   * `legacy` = world.openfoodfacts.org/cgi/search.pl (CORS `*`, slower and sometimes 503; browser).
-   */
-  search: "searchalicious" | "legacy";
+  query: Record<string, string>;
 }
 
 export interface Platform {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSummary, civilToDate, mapExercise, mapSleep, toLocal } from "../../core/summary.js";
-import { fullScope } from "../../server/oauth.js";
+import { fullScope } from "../../shared/scopes.js";
 import { fakeFetch, json } from "../helpers/fakeGoogle.js";
 import { ALL_SCOPES, exercisePoint, rollupDay, signIn, sleepPoint } from "../helpers/fixtures.js";
 

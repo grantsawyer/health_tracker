@@ -20,7 +20,7 @@ const corsHidden503 = () => { throw new TypeError("Failed to fetch"); };
 
 beforeEach(() => {
   const mem = memoryPlatform();
-  mem.platform.off = { headers: {}, query: { app_name: "HealthTracker", app_version: "0.2.0" }, search: "legacy" };
+  mem.platform.off = { query: { app_name: "HealthTracker", app_version: "0.2.0" } };
   configurePlatform(mem.platform);
   offRetry.delayMs = 0;
 });

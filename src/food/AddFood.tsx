@@ -15,7 +15,7 @@ import {
  *  - Search: Open Food Facts by name or barcode (typed, or webcam scan where the
  *    browser supports BarcodeDetector); logged as a quick add with scaled nutrition
  *  - Quick add: name + calories (+ optional macros)
- * Quick-add entries can't be patched by Google, so editing one replaces it (server-side).
+ * Quick-add entries can't be patched by Google, so editing one replaces it (core/food.ts).
  */
 
 export const MEAL_LABEL: Record<string, string> = { BREAKFAST: "Breakfast", LUNCH: "Lunch", DINNER: "Dinner", SNACK: "Snack", ANYTIME: "Anytime" };
@@ -114,7 +114,7 @@ export function AddFood(props: {
 
   const pickProduct = async (p: OffProduct) => {
     setError(null);
-    // Search hits lack serving data; the product record has it (cached, rate-limited server-side).
+    // Search hits lack serving data; the product record has it (cached and rate-limited in core/openFoodFacts.ts).
     let full = p;
     try {
       full = (await api.off.product(p.code)).product ?? p;

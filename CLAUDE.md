@@ -1,6 +1,6 @@
 # Health Tracker: notes for Claude
 
-Personal local web app: dashboards for Google Health data (fitness, sleep, nutrition, body) plus
+Personal static web app (GitHub Pages): dashboards for Google Health data (fitness, sleep, nutrition, body) plus
 food logging written back to Google Health. Single user (the owner). See README.md for setup.
 
 ## Session handoff (start here)
@@ -10,13 +10,12 @@ by the owner on Mac and phone. Next: phase 6 (retire the server, plan §9) or th
 first, plan §12), as the owner chooses. If sign-in shows `origin_mismatch`, check the OAuth client's Authorized
 JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minutes to apply).**
 
-- **Running it:** the app runs **without a server**: `npm run dev` (Vite only), then http://localhost:5173. The old
-  local server remains as a fallback until phase 6: `npm run dev:server-mode` (`VITE_BACKEND=server`).
+- **Running it:** `npm run dev` (Vite only), then http://localhost:5173. There is no server (retired in phase 6,
+  2026-11-11).
 - **Migration:** phases 1–3 and 5 are done (phase 5 live 2026-11-11). Phase 4 (first-run goals card,
   Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
   account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (public since 2026-11-11; run
-  `npm run check:privacy:history` before any history rewrite or new push of old branches); keep the server until
-  phase 6.
+  `npm run check:privacy:history` before any history rewrite or new push of old branches).
 - **Remote:** the GitHub repo was **deleted and recreated** on 2026-11-11 (it had gone public while GitHub still
   served the removed commit `28d4e58`; deleting the repo was the only immediate purge). Clean history pushed:
   `origin/main` = `b60616f`. Pages source and the `GOOGLE_CLIENT_ID` variable were set again afterwards. Check `git log origin/main..main` at the start.
@@ -46,18 +45,20 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
 - **History:** the rewrite was pushed 2026-11-08 (`28d4e58` removed). The runbook's step B1 checks GitHub no longer
   serves it before going public.
 
-**Owner's local state (not in the repo):** `~/.health_tracker/` holds `.env` (client id and secret),
-`token.enc`/`token.key`, `cache.db`, `app.db` (their goals, layout, favorites, retry queue) and
-`private-patterns.txt`. Their real goals are saved in app.db, so changing the defaults doesn't affect them.
+**Owner's local state (not in the repo):** `~/.health_tracker/` holds `private-patterns.txt` and `.env` (client
+id; the privacy checks read both). Leftovers from the retired server (`token.enc`/`token.key`, `cache.db`, `app.db`
+with the old goals/layout/favorites, a client secret in `.env`) are unused; the owner's real settings now live in
+the browser + Drive. Don't delete that folder for them.
 
 ## Repo layout & policies
 
 - This is its **own git repo**, nested inside `project-vibes/`. The parent ignores it via
   `project-vibes/.git/info/exclude` (`/health_tracker/`). Never `git add` it from the parent.
-- Secrets, tokens, and cached data live in `~/.health_tracker/` (`HEALTH_TRACKER_HOME`), **never**
-  in the repo. `.gitignore` is only a safety net.
-- Only `server/googleHealth.ts` talks to `health.googleapis.com`. Keep all API shape mapping
-  there, since the API is new (launched 2026-03-24) and still changing.
+- Nothing secret is needed to run the app (the client ID isn't secret). The privacy-check inputs live in
+  `~/.health_tracker/`, **never** in the repo. `.gitignore` is only a safety net.
+- Only `core/healthClient.ts` (`healthFetch`) talks to `health.googleapis.com`, and response shapes are mapped in
+  `core/` (summary.ts, food.ts), since the API is new (launched 2026-03-24) and still changing. The demo's
+  `src/demo/demoFetch.ts` mirrors the live shapes; update it with any new mapping.
 
 ## Privacy rules (hard requirement)
 
@@ -92,53 +93,30 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
 
 - `core/` (phase 1 of docs/browser-migration-plan.md): all business logic, host-independent. Gets network,
   tokens, cache, settings and the retry queue from `core/platform.ts` (`configurePlatform`). Never imports
-  `server/`, `node:*`, or reads `process.env` (enforced by `tests/unit/core.test.ts`).
+  `node:*` or reads `process.env` (enforced by `tests/unit/core.test.ts`).
   - `healthClient.ts` (Google Health API), `dataService.ts` (cached reads + TTL), `summary.ts`, `food.ts`
     (library, day log, recents, create/update/delete, retry queue), `openFoodFacts.ts`, `goals.ts`, `layout.ts`,
     `favorites.ts` (stored as one settings entry), `errors.ts`.
-- `platform/` (phase 2, browser only; never imports `server/` or `node:*`, enforced by
+- `platform/` (phase 2, browser only; never imports `node:*`, enforced by
   `tests/unit/browserPlatform.test.ts`): `idb.ts` (one DB `health-tracker`, stores cache / pending / settings, every
-  record keyed by the signed-in email), `cache.ts`, `queue.ts` (same backoff as the server; `due()` is scoped to the
+  record keyed by the signed-in email), `cache.ts`, `queue.ts` (backoff 1→60 min; `due()` is scoped to the
   signed-in user), `drive.ts` (one `settings.json` in appDataFolder), `settings.ts` (local copy plus per-key
   last-write-wins sync; never throws, reports status), `auth.ts` (GIS token model; `signIn()` must run inside a click;
   token in memory + sessionStorage), `browserPlatform.ts` (`createBrowserPlatform`, `browserScopes`, `startRetryLoop`).
   Tests use `fake-indexeddb` (pinned) and `tests/helpers/fakeBrowser.ts` (fake GIS, Drive, sessionStorage).
 - `core/validate.ts` (range/date/type/source checks, `BadRequestError`) and `core/explorer.ts` (Data explorer test
-  entry + delete), shared by the server routes and the browser seam. `Platform.off` says how to reach Open Food
-  Facts: the server sends `User-Agent` to search-a-licious; the browser calls `cgi/search.pl` with `app_name` /
-  `app_version` query params and no custom headers, so there is no CORS preflight (search-a-licious sends no CORS
-  header, verified 2026-11-08). **OFF's legacy search fails ~50% of requests with a 503 that has no CORS header**,
-  so the browser sees "Failed to fetch" (measured from Chrome 2026-11-09). `getJson` retries network errors and
-  503/502/504: search 4 attempts (~94%), barcode 2.
-- `server/platform.ts`: the server's `Platform` (SQLite cache, app.db settings + pending queue per signed-in
-  user, token file, client id). Imported by `server/app.ts`; also migrates the old favorites table once.
-
-
-- `server/`: Node + Hono (`@hono/node-server`), run with `tsx`. Binds 127.0.0.1. Now a thin host for `core/`.
-  - `config.ts`: env from `~/.health_tracker/.env`, paths, `REDIRECT_URI`
-  - `tokenStore.ts`: AES-256-GCM encrypted token file
-  - `oauth.ts`: auth URL (state + PKCE), code exchange, on-demand refresh, revoke
-  - `googleHealth.ts`: `healthFetch` (auth header, 401 retry, `ACCOUNT_NOT_LINKED` mapping)
-  - `cache.ts`: node:sqlite response cache (`~/.health_tracker/cache.db`), 5 min TTL if range includes today, else 24 h; `?fresh=1` bypasses
-  - `dataRoutes.ts`: `/api/data-types`, `/api/data/:type/points|rollup`, `/api/data/delete`, `/api/debug/nutrition-test`
-  - `index.ts`: Host/Origin guard, `/auth/*`, `/api/setup` (in-app credential setup → `~/.health_tracker/.env`), `/api/*`, static `dist/` in production
-  - `dataService.ts`: cached `getPoints` / `getRollup` shared by raw routes and the summary
-  - `food.ts`: library (private foods), units catalog (cached 30 d), day log, recents (last 30 days, deduped by
-    food resource or name+kcal), create / update / delete with the rules below. Routes under `/api/food/*`.
-  - `appStore.ts`: `~/.health_tracker/app.db` (NOT a cache; don't delete) holding `favorites` and
-    `pending_writes`, keyed by user (signed-in email) so the schema already supports multiple users.
-  - `favorites.ts`: validated FoodTemplate favorites. `openFoodFacts.ts`: OFF search
-    (search.openfoodfacts.org) + product by barcode (world.openfoodfacts.org/api/v2), sliding-window rate
-    limits (10 searches/min, 15 products/min), cached 1 d / 30 d, UA includes `OFF_CONTACT` env if set.
-  - Retry queue: `createEntry` queues on Google 5xx/429, network failure or expired sign-in, then returns
-    `{status:"queued"}`. A timer in index.ts runs `processPendingWrites` every 60 s (backoff 1→60 min).
-  - `summary.ts`: `/api/summary` builds normalized `DailySummary[]`, `SleepSession[]`, `ExerciseSession[]`
-    (shared/summary.ts) from 11 rollups + 3 lists in parallel; per-type failures land in `errors`
+  entry + delete). `Platform.off.query` identifies the app to Open Food Facts (`app_name` / `app_version`, no custom
+  headers, so no CORS preflight); search uses `world.openfoodfacts.org/cgi/search.pl` (search-a-licious sends no
+  CORS header, verified 2026-11-08). **OFF's legacy search fails ~50% of requests with a 503 that has no CORS
+  header**, so the browser sees "Failed to fetch" (measured from Chrome 2026-11-09). `getJson` retries network
+  errors and 503/502/504: search 4 attempts (~94%), barcode 2. Rate limits 10 searches/min, 15 products/min;
+  cached 1 d / 30 d. Retry queue: `createEntry` queues on Google 5xx/429, network failure or expired sign-in and
+  returns `{status:"queued"}`; `startRetryLoop` runs `processPendingWrites` every 60 s while the app is open.
+  `buildSummary` (core/summary.ts) builds `DailySummary[]`, `SleepSession[]`, `ExerciseSession[]` from the rollups
+  and lists in parallel; per-type failures land in `errors`.
 - `src/`: React + Vite SPA.
-  - `api.ts` is the seam: `backendMode` comes from `VITE_BACKEND` (default `browser`). Both `api.browser.ts`
-    (core + platform in the page; maps core errors to the same `ApiError` status/`error` keys the server used)
-    and `api.server.ts` (`/api` fetches; Vite proxies `/api` + `/auth` in server mode) implement `Api` in
-    `apiTypes.ts`.
+  - `api.ts` is the seam: `api = browserApi` (`api.browser.ts`, core + platform in the page; `toApiError` maps core
+    errors to `ApiError` status/`error` keys the UI branches on), typed by `Api` in `apiTypes.ts`.
   - `browser/runtime.ts`: client ID (`health-tracker:client-id` in localStorage, else `VITE_GOOGLE_CLIENT_ID`),
     IndexedDB, GIS, `configurePlatform`, retry loop. `ensureSynced` pulls Drive settings once per account, waits at
     most 4 s, and is shared by concurrent callers. `login()` must call GIS synchronously inside the click.
@@ -164,8 +142,8 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
   → `{ name, legacyUserId, healthUserId }` (no email; we take email from the `openid email` id_token).
 - Scopes: `https://www.googleapis.com/auth/googlehealth.<category>.readonly|.writeonly`.
   Write scopes don't grant read. Users may grant a subset, so always check the granted `scope`.
-- OAuth client type documented: **Web Server** (client secret). Hence the backend.
-- Testing-mode refresh tokens expire after **7 days**; `invalid_grant` → `reauth_required`.
+- OAuth client type documented: **Web Server** (client secret), but the GIS token model with a client ID only
+  works (in use since phase 3). Browser tokens last ~1 hour; there's no refresh token.
 - dataPoints methods: list, get, create, patch, batchDelete, rollUp, dailyRollUp, reconcile,
   exportExerciseTcx. Data types used: `nutrition-log`, `food`, `food-measurement-unit`,
   `hydration-log`, steps, sleep, weight, etc.
@@ -231,7 +209,7 @@ Adapted, not copied: no Google branding.
   heart-rate rollup requests). Today tab = always D; its second section is "Last 7 days". Tables list newest first.
 - "Typical range" = the owner's own last 30 days, mean ± 1 SD (`baseline.ts`), never population norms.
   Macro "On target" uses a ±10% display tolerance (FoodView), documented as such.
-- Goals live in app.db (`server/goals.ts`, Account page). Google's API exposes none. Defaults are generic and
+- Goals live in settings (`core/goals.ts`; IndexedDB + Drive), edited on the Account page. Google's API exposes none. Defaults are generic and
   sourced (FDA Daily Values, Fitbit default targets); never derive defaults or test data from a real account.
 - Sleep D night card (`NightDetail` + `sleepStages.ts`): chips switch Timeline / Compared with usual /
   30-day average, after the owner's benchmarks screenshot. Stage share = minutes ÷ time in bed. "Usual" is the
@@ -240,7 +218,7 @@ Adapted, not copied: no Google branding.
   and more REM / less deep isn't inherently good).
 - Today page is customizable: `shared/layout.ts` (22 card ids incl. `stepsRing`; "today" = 12 SLOTS, the ring
   uses 3 (`slotSize`); "week" = 12 cards; layout v2 added the ring as a card, v1 layouts get it prepended),
-  defaults, validation shared with the server), `server/layout.ts` (app.db, per user; stale ids cleaned on read),
+  defaults, validation), `core/layout.ts` (settings, per user; stale ids cleaned on read),
   `src/dashboard/cards.tsx` (registry: tile + week renderers, availability = any data in last 30 days),
   `CardBoard.tsx` (Customize mode: drag/drop + ‹ › + ×, picker; edits are a draft until Done).
   Today grid columns follow the **window** width (owner's breakpoints, 2026-11-08): 1 below 600px, 2 from 600,
@@ -286,20 +264,18 @@ Adapted, not copied: no Google branding.
   Chrome channel, Vite on 5174, browser mode). `tests/e2e/fakeBackend.ts` fakes the GIS script, userinfo, Google
   Health (stateful nutrition-log points), Drive appData and Open Food Facts in the browser. It seeds the client ID
   and session via `addInitScript`; settings live under the `todayLayout` / `goals` / `favorites` keys. Assert
-  settings with `expect.poll` (Drive sync is debounced). Server mode has no e2e; its routes are unit-tested.
-- `tests/setup.ts` sets `HEALTH_TRACKER_HOME` to a fresh temp dir per test file BEFORE server modules load
-  (config.ts reads env at import). Never point tests at `~/.health_tracker`.
+  settings with `expect.poll` (Drive sync is debounced).
+- `tests/setup.ts` registers `tests/helpers/testPlatform.ts` (an in-memory `memoryPlatform`, per test file):
+  `fixtures.signIn(_, email)` switches account (settings, queue and cache are per account, as in the browser).
 - `tests/helpers/fakeGoogle.ts` replaces `fetch` with a strict router: unmatched requests throw.
   Fixtures are synthetic but shaped like live responses; never commit real health data.
-- `server/app.ts` holds routes/guards; `server/index.ts` only binds the port and starts the retry timer,
-  so tests can call `app.request()`.
 - Pure UI logic lives in `.ts` modules (`src/food/offMath.ts`, `src/dashboard/sleep.ts`, `src/viz/scale.ts`,
   `src/units.ts`) so it's testable without React.
 - Mutation-checked 2026-11-08: breaking the snake_case filter prefix, the create-before-delete order for
   quick-add edits, or the retry queue's already-written check each fails the suite.
 - Owner preference (project memory): don't run test suites unless asked.
 
-## Original build phases (server era, 2026-11-07/08; not the migration phases)
+## Original build phases (server era, 2026-11-07/08; not the migration phases; the server was retired 2026-11-11)
 
 The numbering below predates `docs/browser-migration-plan.md`; for current work use the migration phases.
 
@@ -316,5 +292,5 @@ Defaults chosen 2026-11-07 (owner may revise): accept weekly re-auth; localhost 
 Facts deferred to Phase 5.
 
 Deliberately NOT done: no PWA/mobile build (owner skipped it); no OFF search-as-you-type (OFF policy); OFF contact email not sent unless OFF_CONTACT is set; no creating foods (API forbids it; quick add instead); no editing other apps' entries (scope forbids it); no `include_granted_scopes` (legacy Google Fit consent breaks tokens);
-no browser-only/implicit OAuth flow (Google documents only the Web Server client for this API, and the
-secret can't live in the browser); no Google verification/publishing (single user).
+no Google verification/publishing (test users only). (An early "no browser-only OAuth flow" decision was reversed
+by the browser migration: GIS token model, client ID only.)

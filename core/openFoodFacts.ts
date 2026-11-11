@@ -9,14 +9,15 @@ export { OffError } from "./errors.js";
  * lookup. Results are logged to Google Health as quick-add entries.
  *
  * Usage policy (openfoodfacts.github.io/openfoodfacts-server/api, checked 2026-11-08):
- * - identify the app; the host supplies how (platform().off): a User-Agent header on the server;
- *   app_name/app_version query parameters in browsers, which can't set User-Agent (and an
- *   X-User-Agent header would force a CORS preflight that fails whenever OFF is busy);
+ * - identify the app: app_name/app_version query parameters (platform().off.query). Browsers can't set
+ *   User-Agent, and an X-User-Agent header would force a CORS preflight that fails whenever OFF is busy;
  * - ≤10 searches/min and ≤15 product reads/min per IP; no search-as-you-type.
  *   Enforced here with sliding windows, plus caching (search 1 day, products 30 days).
  */
-const SEARCH_URL = "https://search.openfoodfacts.org/search";
-/** Legacy full-text search: the only search endpoint that sends CORS headers (verified 2026-11-08). */
+/**
+ * Legacy full-text search: the only search endpoint that sends CORS headers (verified 2026-11-08; the newer
+ * search.openfoodfacts.org sends none, so a browser can't use it).
+ */
 const LEGACY_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 const PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product";
 const FIELDS = "code,product_name,brands,serving_size,serving_quantity,nutriments";
@@ -46,12 +47,12 @@ export const offRetry = { delayMs: 1200 };
  * since an X-User-Agent header would force a CORS preflight that fails the same way).
  */
 async function getJson(url: string, attempts: number, busyMessage: string): Promise<any> {
-  const { headers, query } = platform().off;
-  const full = query && Object.keys(query).length ? `${url}${url.includes("?") ? "&" : "?"}${new URLSearchParams(query)}` : url;
+  const { query } = platform().off;
+  const full = Object.keys(query).length ? `${url}${url.includes("?") ? "&" : "?"}${new URLSearchParams(query)}` : url;
   for (let attempt = 1; ; attempt++) {
     let res: Response | null = null;
     try {
-      res = await platform().fetch(full, { headers: { ...headers, Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+      res = await platform().fetch(full, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
     } catch {
       res = null; // network error, or a 503 the browser hid because it had no CORS header
     }
@@ -119,15 +120,9 @@ export async function searchFoods(query: string): Promise<OffProduct[]> {
   const hit = await platform().cache.get<OffProduct[]>(key);
   if (hit) return hit.value;
   take("search");
-  let hits: unknown[];
-  if (platform().off.search === "legacy") {
-    const params = new URLSearchParams({ search_terms: q, search_simple: "1", action: "process", json: "1", page_size: "25", fields: FIELDS });
-    // ~50% of single requests fail when OFF is busy (measured from Chrome 2026-11-09): 4 attempts ≈ 94% success.
-    hits = ((await getJson(`${LEGACY_SEARCH_URL}?${params}`, 4, SEARCH_BUSY))?.products ?? []) as unknown[];
-  } else {
-    const params = new URLSearchParams({ q, page_size: "25", fields: FIELDS, langs: "en" });
-    hits = ((await getJson(`${SEARCH_URL}?${params}`, 2, SEARCH_BUSY))?.hits ?? []) as unknown[];
-  }
+  const params = new URLSearchParams({ search_terms: q, search_simple: "1", action: "process", json: "1", page_size: "25", fields: FIELDS });
+  // ~50% of single requests fail when OFF is busy (measured from Chrome 2026-11-09): 4 attempts ≈ 94% success.
+  const hits = ((await getJson(`${LEGACY_SEARCH_URL}?${params}`, 4, SEARCH_BUSY))?.products ?? []) as unknown[];
   const products = hits.map(toProduct).filter((p): p is OffProduct => p !== null);
   await platform().cache.put(key, "off", products, 24 * 3600_000);
   return products;

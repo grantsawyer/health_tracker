@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getLayout, resetLayout, saveLayout } from "../../core/layout.js";
-import { putSetting } from "../../server/appStore.js";
+import { platform } from "../../core/platform.js";
 import { FoodInputError } from "../../core/errors.js";
 import { DEFAULT_LAYOUT, LAYOUT_LIMITS, METRIC_IDS, SECTION_SUPPORT, layoutError } from "../../shared/layout.js";
 import { METRICS, metricsFor } from "../../src/dashboard/cards";
@@ -44,7 +44,7 @@ describe("layout storage", () => {
   });
   it("adds the ring to layouts saved before it became a card (v1)", async () => {
     signIn(undefined, "layout-d@example.com");
-    putSetting("layout-d@example.com", "todayLayout", { today: ["heartRate", "sleep"], week: ["steps"] });
+    await platform().settings.put("todayLayout", { today: ["heartRate", "sleep"], week: ["steps"] });
     expect((await getLayout()).today).toEqual(["stepsRing", "heartRate", "sleep"]);
     // ...but not once the owner has removed it from a v2 layout
     await saveLayout({ today: ["heartRate"], week: [] });
@@ -53,7 +53,7 @@ describe("layout storage", () => {
 
   it("cleans up a stored layout that no longer validates instead of failing", async () => {
     signIn(undefined, "layout-c@example.com");
-    putSetting("layout-c@example.com", "todayLayout", { v: 2, today: ["steps", "retiredCard", "steps"], week: ["sleepSchedule", "weight"] });
+    await platform().settings.put("todayLayout", { v: 2, today: ["steps", "retiredCard", "steps"], week: ["sleepSchedule", "weight"] });
     expect(await getLayout()).toEqual({ today: ["steps"], week: ["weight"] });
   });
 });

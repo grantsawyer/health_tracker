@@ -4,12 +4,9 @@ import type { SetupInfo } from "../shared/types";
 
 /**
  * Guided Google Cloud setup. Walks through the Console steps with the exact
- * values to copy.
- * - Browser mode (default): only the OAuth client ID is needed (it isn't
- *   secret); it's saved in this browser. The client lists this site under
- *   "Authorized JavaScript origins".
- * - Server mode: the client ID and secret go to the local server
- *   (~/.health_tracker/.env), with a redirect URI instead of an origin.
+ * values to copy. Only the OAuth client ID is needed (it isn't secret); it's
+ * saved in this browser. The client lists this site under "Authorized
+ * JavaScript origins".
  */
 
 const CHECKLIST_KEY = "health-tracker:setup-checklist";
@@ -44,7 +41,6 @@ export function SetupWizard({ onSaved, onCancel }: { onSaved: () => void; onCanc
 
   if (error) return <div className="banner banner-error">Couldn't load setup info: {error}</div>;
   if (!info) return <p className="muted">Loading…</p>;
-  const browser = info.mode === "browser";
 
   return (
     <div className="setup">
@@ -85,14 +81,12 @@ export function SetupWizard({ onSaved, onCancel }: { onSaved: () => void; onCanc
             and click <strong>Enable</strong>. If that link doesn't find it, go to APIs &amp; Services → Library and
             search for “Google Health API”.
           </p>
-          {browser && (
-            <p>
-              Also enable the <Ext href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Google Drive
-              API</Ext>. The app keeps your goals, Today layout and favorites in a small hidden file in your own Drive,
-              so they follow you to other browsers. It can't see your other Drive files. If you skip this, settings stay
-              in this browser only.
-            </p>
-          )}
+          <p>
+            Also enable the <Ext href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Google Drive
+            API</Ext>. The app keeps your goals, Today layout and favorites in a small hidden file in your own Drive,
+            so they follow you to other browsers. It can't see your other Drive files. If you skip this, settings stay
+            in this browser only.
+          </p>
         </Step>
 
         <Step id="branding" n={4} title="Set up the consent screen" checked={checked} toggle={toggle}>
@@ -114,9 +108,8 @@ export function SetupWizard({ onSaved, onCancel }: { onSaved: () => void; onCanc
             your Google email, and save.
           </p>
           <p className="muted">
-            {browser
-              ? "Google sign-in in a browser lasts about an hour, so expect a one-click “Continue” about once per visit. That's expected."
-              : "Testing mode means you'll be asked to sign in again about once a week. That's expected."}
+            Google sign-in in a browser lasts about an hour, so expect a one-click “Continue” about once per visit.
+            That's expected.
           </p>
         </Step>
 
@@ -136,36 +129,18 @@ export function SetupWizard({ onSaved, onCancel }: { onSaved: () => void; onCanc
           </p>
           <ul>
             <li><strong>Application type:</strong> Web application. <strong>Name:</strong> Health Tracker.</li>
-            {browser ? (
-              <>
-                <li>
-                  Under <strong>Authorized JavaScript origins</strong>, click <strong>Add URI</strong> and paste:
-                  <CopyBlock text={info.javascriptOrigin} label="Copy origin" />
-                  No redirect URI is needed.
-                </li>
-                <li>Click <strong>Create</strong>, then copy the <strong>Client ID</strong> (or download the JSON).</li>
-              </>
-            ) : (
-              <>
-                <li>
-                  Leave <em>Authorized JavaScript origins</em> empty. Under <strong>Authorized redirect URIs</strong>, click{" "}
-                  <strong>Add URI</strong> and paste:
-                  <CopyBlock text={info.redirectUri ?? ""} label="Copy redirect URI" />
-                </li>
-                <li>
-                  Click <strong>Create</strong>. In the dialog that appears, click <strong>Download JSON</strong>. Google
-                  may only show the client secret this once.
-                </li>
-              </>
-            )}
+            <li>
+              Under <strong>Authorized JavaScript origins</strong>, click <strong>Add URI</strong> and paste:
+              <CopyBlock text={info.javascriptOrigin} label="Copy origin" />
+              No redirect URI is needed.
+            </li>
+            <li>Click <strong>Create</strong>, then copy the <strong>Client ID</strong> (or download the JSON).</li>
           </ul>
-          {browser && (
-            <p className="muted">
-              Already have a client from the local-server version of this app? Open it instead, add the origin above
-              under Authorized JavaScript origins, and save. The same client ID works, and entries you logged before stay
-              editable.
-            </p>
-          )}
+          <p className="muted">
+            Already have a client for this app (another address, or the old local-server version)? Open it instead, add
+            the origin above under Authorized JavaScript origins, and save. The same client ID keeps your earlier entries
+            editable.
+          </p>
         </Step>
 
         <li className="step step-final">
@@ -173,7 +148,7 @@ export function SetupWizard({ onSaved, onCancel }: { onSaved: () => void; onCanc
             <span className="step-n">8</span>
             <h3>Give the credentials to this app</h3>
           </div>
-          {browser ? <ClientIdForm onSaved={onSaved} origin={info.javascriptOrigin} initial={info.clientId ?? ""} /> : <CredentialsForm onSaved={onSaved} envFile={info.envFile ?? ""} />}
+          <ClientIdForm onSaved={onSaved} origin={info.javascriptOrigin} initial={info.clientId ?? ""} />
           {onCancel && (
             <div className="actions">
               <button onClick={onCancel}>Cancel</button>
@@ -235,98 +210,7 @@ function CopyBlock({ text, label }: { text: string; label: string }) {
   );
 }
 
-/** Accepts the JSON file Google lets you download, or the two values pasted by hand. */
-function CredentialsForm({ onSaved, envFile }: { onSaved: () => void; envFile: string }) {
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [fileNote, setFileNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const onFile = async (file: File | undefined) => {
-    setError(null);
-    setFileNote(null);
-    if (!file) return;
-    try {
-      const json = JSON.parse(await file.text());
-      const client = json.web ?? json.installed;
-      if (!client?.client_id || !client?.client_secret) throw new Error("no client_id / client_secret found");
-      if (!json.web) setError("This JSON is for a Desktop client. Create a “Web application” client instead (step 7).");
-      setClientId(client.client_id);
-      setClientSecret(client.client_secret);
-      const uris: string[] = client.redirect_uris ?? [];
-      setFileNote(
-        uris.length === 0 || uris.some((u) => u.includes("/auth/callback"))
-          ? `Loaded ${file.name}.`
-          : `Loaded ${file.name}, but its redirect URIs (${uris.join(", ")}) don't include this app's. Recheck step 7.`,
-      );
-    } catch (err) {
-      setError(`Couldn't read that file as a Google client JSON (${(err as Error).message}).`);
-    }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.saveCredentials(clientId, clientSecret);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : (err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="step-body">
-      <p>
-        Choose the JSON file you downloaded in step 7. Or, if you didn't download it, copy the{" "}
-        <strong>Client ID</strong> and <strong>Client secret</strong> from the client's page in Google Cloud and paste
-        them below.
-      </p>
-      <label className="file-pick">
-        <input type="file" accept="application/json,.json" onChange={(e) => onFile(e.target.files?.[0])} />
-      </label>
-      {fileNote && <p className="muted">{fileNote}</p>}
-      <div className="form-grid form-grid-2">
-        <label>
-          Client ID
-          <input
-            type="text"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            placeholder="1234567890-abc….apps.googleusercontent.com"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label>
-          Client secret
-          <input
-            type="password"
-            value={clientSecret}
-            onChange={(e) => setClientSecret(e.target.value)}
-            placeholder="GOCSPX-…"
-            autoComplete="off"
-          />
-        </label>
-      </div>
-      {error && <p className="error-text">{error}</p>}
-      <div className="actions">
-        <button className="primary" onClick={save} disabled={saving || !clientId || !clientSecret}>
-          {saving ? "Saving…" : "Save and continue"}
-        </button>
-      </div>
-      <p className="muted">
-        Saved only on this computer, in <code>{envFile}</code> (readable by your user account only). It never goes
-        into the code repository.
-      </p>
-    </div>
-  );
-}
-
-/** Browser mode: the client ID only, from the downloaded JSON or pasted. Saved in this browser. */
+/** The client ID, from the downloaded JSON or pasted. Saved in this browser. */
 function ClientIdForm({ onSaved, origin, initial }: { onSaved: () => void; origin: string; initial: string }) {
   const [clientId, setClientId] = useState(initial);
   const [note, setNote] = useState<string | null>(null);

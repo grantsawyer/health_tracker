@@ -3,8 +3,7 @@ import {
   FoodInputError, NotEditableError, createEntry, deleteEntry, fingerprintStart, getDay, getMyFoods, getRecents,
   listPendingWrites, parseEntry, processPendingWrites, updateEntry,
 } from "../../core/food.js";
-import { currentUserKey, makeDueNow } from "../../server/appStore.js";
-import { cacheClear } from "../../server/cache.js";
+import { platform } from "../../core/platform.js";
 import type { NewFoodLogEntry } from "../../shared/food.js";
 import { done, fakeFetch, json } from "../helpers/fakeGoogle.js";
 import { GRAM, OZ, USER, foodPoint, nutritionLog, signIn } from "../helpers/fixtures.js";
@@ -16,9 +15,9 @@ const quick = (over: Partial<NewFoodLogEntry> = {}): NewFoodLogEntry =>
 const foodEntry = (over: Partial<NewFoodLogEntry> = {}): NewFoodLogEntry =>
   ({ kind: "food", food: "users/me/dataTypes/food/dataPoints/42", unit: OZ, amount: 2, mealType: "DINNER", timeLocal: "2026-11-07T19:00", utcOffsetSeconds: -18000, ...over }) as NewFoodLogEntry;
 
-beforeEach(() => {
+beforeEach(async () => {
   signIn();
-  cacheClear();
+  await platform().cache.clear();
 });
 
 describe("parseEntry (untrusted input)", () => {
@@ -161,7 +160,7 @@ describe("processPendingWrites", () => {
   async function queueOne(name: string) {
     fakeFetch().on("POST", LOGS, () => json({ error: { message: "unavailable" } }, 503));
     await createEntry(quick({ displayName: name }));
-    makeDueNow(currentUserKey(), false);
+    await platform().pending.makeDueNow(false);
     return (await listPendingWrites()).find((p) => p.label === name)!;
   }
 
@@ -181,8 +180,7 @@ describe("processPendingWrites", () => {
   it("does NOT re-send when the first attempt actually landed (lost response)", async () => {
     const p = await queueOne("Lost response");
     // Google already has a self-written entry with the queued entry's exact fingerprinted startTime.
-    const { duePending } = await import("../../server/appStore.js");
-    const rows = duePending<NewFoodLogEntry>();
+    const rows = await platform().pending.due<NewFoodLogEntry>();
     let posted = 0;
     fakeFetch()
       .on("GET", LOGS, () => json({ dataPoints: rows.map((r, i) => nutritionLog({ id: `x${i}`, start: r.startTime, name: r.label, kcal: 1, ours: true })) }))

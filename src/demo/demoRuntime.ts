@@ -104,7 +104,7 @@ export function createDemoRuntime(): Runtime {
     cache,
     settings,
     pending: noQueue,
-    off: { headers: {}, search: "legacy" },
+    off: { query: {} },
     log: { info: () => {}, warn: (m) => console.warn(m) },
   };
   configurePlatform(platform);

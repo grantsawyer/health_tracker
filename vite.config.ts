@@ -1,9 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
-const serverPort = Number(process.env.PORT ?? 8787);
-const target = `http://127.0.0.1:${serverPort}`;
-
 /**
  * Content Security Policy for production builds (GitHub Pages can't send headers, so it's a <meta> tag).
  * Tokens live in the page, so this limits what injected content could load or send them to.
@@ -53,11 +50,5 @@ export default defineConfig({
     host: "localhost",
     port: 5173,
     strictPort: true,
-    // Server mode only (npm run dev:server-mode): /api and /auth are forwarded to the local server.
-    // The default browser mode calls Google directly and never uses these.
-    proxy: {
-      "/api": { target },
-      "/auth": { target },
-    },
   },
 });
