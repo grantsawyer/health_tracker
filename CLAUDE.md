@@ -229,6 +229,10 @@ Adapted, not copied: no Google branding.
 - Goals are editable inline (`src/ui/GoalEditor.tsx`) wherever a goal is shown; all dashboard views share one
   goals source (`goalsContext.tsx`, provided by DashboardShell), so an edit updates every chart immediately.
   Mini trend cards are buttons, so they get no inline editor (no nested buttons); edit from the tab instead.
+- App icon (2026-11-11): one source, `scripts/make-icons.mjs` (superellipse n=5 squircle + the `Icon.heart` path,
+  centred). Writes `public/icon.svg` (favicon), `public/apple-touch-icon.png`, `docs/social-preview.png` (upload by
+  hand: GitHub repo Settings → Social preview; no API). The sidebar mark is `src/ui/BrandMark.tsx` (same geometry,
+  theme colours from CSS); keep it in sync with the script.
 - Sidebar is sticky (html/body use `overflow-x: clip`; `hidden` made them scroll containers and the sidebar
   scrolled away). It collapses to icons (wide screens; `health-tracker:rail-collapsed` in localStorage), via the Collapse
   button or a click on any empty sidebar space (not on a button). Main content max width 1475px (1180 + 25%), centered beside the sidebar.

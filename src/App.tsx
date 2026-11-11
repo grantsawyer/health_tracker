@@ -7,6 +7,7 @@ import { DashboardShell } from "./dashboard/DashboardShell";
 import { Preferences } from "./Preferences";
 import { SettingsCard } from "./SettingsCard";
 import { exitDemo, isDemo, startDemo } from "./demo/mode";
+import { BrandMark } from "./ui/BrandMark";
 import { Icon } from "./ui/icons";
 import type { StatusResponse } from "../shared/types";
 
@@ -136,7 +137,7 @@ export function App() {
   return (
     <div className={`shell ${collapsed ? "rail-collapsed" : ""}`}>
       <aside className="rail" onClick={onRailClick}>
-        <div className="brand"><span className="brand-mark"><Icon.heart /></span><span>Health Tracker</span></div>
+        <div className="brand"><BrandMark /><span>Health Tracker</span></div>
         {connected && (
           <nav className="nav" aria-label="Sections">
             {DASH_TABS.map(navButton)}

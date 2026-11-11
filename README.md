@@ -1,3 +1,5 @@
+<img src="public/icon.svg" width="72" height="72" alt="">
+
 # Health Tracker
 
 A personal browser app for viewing Google Health data (fitness, sleep, nutrition, body

@@ -101,7 +101,9 @@ code { font-size: 0.9em; }
   display: flex; flex-direction: column; gap: 4px; padding: 22px 12px;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
-.brand-mark { width: 28px; height: 28px; border-radius: 9px; background: var(--activity); display: grid; place-items: center; color: var(--bg); }
+.brand-mark { width: 30px; height: 30px; flex: none; }
+.brand-mark-bg { fill: var(--activity); }
+.brand-mark-heart { fill: none; stroke: var(--bg); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-sep { height: 1px; background: var(--border); margin: 10px 10px; }
 .nav-btn {
