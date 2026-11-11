@@ -1,0 +1,65 @@
+# Builds the serverless app and deploys it to GitHub Pages (https://grantsawyer.github.io/health_tracker/).
+# Deploys only after the full-history secret scan passes (same check as secret-scan.yml, repeated here so a
+# deploy can never run ahead of it). The Google OAuth client ID comes from the repository VARIABLE
+# GOOGLE_CLIENT_ID: it ships in the bundle by design, so it isn't a secret, but it is never committed.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push supersedes a queued one, but a running deploy finishes.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: everything in it is published with the repo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check-secrets.mjs --history
+      - run: node scripts/check-secrets.mjs
+
+  build:
+    needs: scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # Not `npm run build`: that also typechecks the local server, which Pages doesn't ship.
+      - run: npx vite build
+        env:
+          PAGES_BASE: /health_tracker/
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
