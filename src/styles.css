@@ -293,7 +293,7 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 /* Per-food macro balance (share of macro calories): carbs · fat · protein as three vertical bars in fixed order,
  * each on its own track, so position as well as hue tells them apart. Exact shares are in the label/tooltip. */
 .macro-bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
-.macro-bar { position: relative; width: 6px; height: 100%; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.macro-bar { position: relative; width: 9px; height: 100%; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .macro-bar-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 999px; }
 .entry-detail { font-size: 12.5px; }
 .entry-kcal { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
