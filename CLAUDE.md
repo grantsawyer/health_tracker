@@ -14,12 +14,12 @@ JavaScript origins (`https://grantsawyer.github.io`, saved; Google can take minu
   local server remains as a fallback until phase 6: `npm run dev:server-mode` (`VITE_BACKEND=server`).
 - **Migration:** phases 1–3 and 5 are done (phase 5 live 2026-11-11). Phase 4 (first-run goals card,
   Forget this device, per-account isolation, sharing docs) is built and awaits a live check with a real second test
-  account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (still **private**; the runbook covers
-  going public safely); keep the server until phase 6.
+  account. Decisions: Drive settings sync; GitHub Pages with a **public** repo (public since 2026-11-11; run
+  `npm run check:privacy:history` before any history rewrite or new push of old branches); keep the server until
+  phase 6.
 - **Remote:** the GitHub repo was **deleted and recreated** on 2026-11-11 (it had gone public while GitHub still
   served the removed commit `28d4e58`; deleting the repo was the only immediate purge). Clean history pushed:
-  `origin/main` = `b60616f`. Repo settings were reset: Pages source and the `GOOGLE_CLIENT_ID` variable must be set
-  again (runbook B3/B4). Check `git log origin/main..main` at the start.
+  `origin/main` = `b60616f`. Pages source and the `GOOGLE_CLIENT_ID` variable were set again afterwards. Check `git log origin/main..main` at the start.
 - **Hosting:** `.github/workflows/pages.yml` (scan → typecheck + unit tests + `PAGES_BASE=/health_tracker/ vite
   build` → deploy). CSP lives in `vite.config.ts` (`CSP`), production builds only: any new external host must be
   added there. One CSP console error on load is expected and harmless: GIS's button stylesheet (`style-src-elem`,
