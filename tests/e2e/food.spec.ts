@@ -287,4 +287,11 @@ test("entry rows: one-line names, icon buttons, macro bars before the name and d
   const text = (await name.boundingBox())!;
   expect(bars.x).toBeGreaterThanOrEqual(time.x + time.width);
   expect(bars.x + bars.width).toBeLessThanOrEqual(text.x);
+  // …with equal gaps on both sides: time text → bars and bars → title text.
+  const gaps = await row.evaluate((li) => {
+    const textBox = (sel: string) => { const r = document.createRange(); r.selectNodeContents(li.querySelector(sel)!); return r.getBoundingClientRect(); };
+    const b = li.querySelector(".macro-bars")!.getBoundingClientRect();
+    return [b.left - textBox(".entry-time").right, textBox(".entry-name").left - b.right];
+  });
+  expect(Math.abs(gaps[0]! - gaps[1]!)).toBeLessThan(1);
 });

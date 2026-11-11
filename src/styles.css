@@ -283,7 +283,9 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
   display: grid; grid-template-columns: 74px auto minmax(0, 1fr) auto; align-items: center; gap: 2px 14px;
   grid-template-areas: "time bars name right" "time bars detail right"; padding: 10px 0; border-top: 1px solid var(--border);
 }
-.entry-time { grid-area: time; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Right-aligned so the gap from the time to the bars equals the gap from the bars to the title (14px each) on every
+ * row, whatever the time's width (owner request 2026-11-11). */
+.entry-time { grid-area: time; font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 .entry-name { grid-area: name; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .entry-right { grid-area: right; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .entry-detail { grid-area: detail; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -330,6 +332,7 @@ input:focus-visible, select:focus-visible, .food-search:focus-visible { outline:
 .scanner video { width: 100%; max-width: 420px; border-radius: var(--r-md); background: #000; }
 @media (max-width: 640px) {
   .entry-list li { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "time time time" "bars name right" "bars detail right"; }
+  .entry-time { text-align: left; } /* its own line on phones */
   .pick-list button { flex-direction: column; gap: 2px; }
   .meal-kcal { font-size: 20px; }
 }
