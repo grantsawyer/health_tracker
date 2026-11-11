@@ -75,7 +75,9 @@ food logging written back to Google Health. Single user (the owner). See README.
 - **Run `npm run check:privacy` before every commit and push.** It scans tracked + untracked files for the
   private literals in `~/.health_tracker/private-patterns.txt` (outside the repo) plus the real client id/secret
   from `.env`. A clean run is required; if it fails, remove the value (never add it to an allow-list in the repo).
-  No git hook is installed by choice: the check is a documented step.
+  A **pre-commit hook** (`.githooks/pre-commit`, enabled by `npm install` / `npm run hooks:install` via
+  `core.hooksPath`) runs check-secrets and check-privacy on the staged content of every commit (added 2026-11-10 at
+  the owner's request; earlier there was deliberately none).
 - Never commit personal data: no real health values, food names from a real log, emails, Google Health user
   ids, OAuth client ids/secrets, or screenshots. Tests and fixtures use synthetic values only; default goals are
   generic published references.

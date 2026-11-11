@@ -117,13 +117,22 @@ npm run test:all    # both
 
 ## Keeping personal data out of the repo
 
-**Run the privacy check before every commit** (and before any push):
+**A pre-commit hook checks every commit automatically.** `npm install` turns it on for the clone
+(`npm run hooks:install` does the same). It runs on the staged content and blocks the commit if it finds:
+- a coding-agent folder or settings file (`.claude/`, `.cursor/`, `.gemini/`, `.specstory/`, `.mcp.json`, …). Claude
+  Code's "Yes, and don't ask again" saves full commands, secrets included, to `.claude/settings.local.json`;
+- anything that looks like a credential, including passwords inside commands (`PGPASSWORD=…`, bearer headers,
+  `user:pass@` URLs). Pass secrets as `$VAR` instead;
+- one of your private values (below).
+
+To run the same checks on the whole working tree, or on every commit ever made:
 
 ```sh
-npm run check:privacy
+npm run check:privacy           # check-secrets + private values, working tree
+npm run check:secrets:history   # every commit (also runs in GitHub Actions on each push)
 ```
 
-It fails if any tracked or new file contains a private value. The values are listed in
+The private-values check fails if any tracked or new file contains a private value. The values are listed in
 `~/.health_tracker/private-patterns.txt` (one literal per line; kept outside the repo so the list itself is
 never published); your real OAuth client ID and secret are added from `~/.health_tracker/.env` automatically.
 Add new personal values to that file whenever you notice them (e.g. a new food name or measurement).

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Blocks commits that contain secrets, coding-agent settings files (.claude/, .cursor/, ...) or the owner's
+# personal data. Checks only what's staged. Enabled per clone by `npm install` (prepare) or `npm run hooks:install`.
+# Bypass with `git commit --no-verify` only for a false positive you've checked by hand.
+set -e
+node scripts/check-secrets.mjs --staged
+node scripts/check-privacy.mjs --staged
